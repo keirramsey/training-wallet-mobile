@@ -1,4 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -17,8 +19,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CredentialCard } from '@/components/CredentialCard';
 import { apiFetch } from '@/src/lib/api';
+import { inferStatus } from '@/src/data/demoCredentials';
 import { getLocalCredential } from '@/src/storage/credentialsStore';
-import { colors, fontSizes, layout, radii, shadows, spacing } from '@/src/theme/tokens';
+import { colors, fontSizes, layout, radii, shadows, spacing, statusColors } from '@/src/theme/tokens';
 import type { Credential } from '@/src/types/credential';
 
 function normalizeApiError(err: unknown): { message: string; httpStatus?: number } {
@@ -30,6 +33,40 @@ function normalizeApiError(err: unknown): { message: string; httpStatus?: number
     return { message: rawMessage, httpStatus };
   }
   return { message: `Request failed: ${rawMessage}`, httpStatus };
+}
+
+function formatDate(iso: string | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+}
+
+function getStatusDisplay(status: string | undefined) {
+  const normalizedStatus = status || 'unverified';
+  const config = statusColors[normalizedStatus as keyof typeof statusColors] || statusColors.unverified;
+
+  const labels: Record<string, string> = {
+    verified: 'Verified',
+    validated: 'Verified',
+    expired: 'Expired',
+    processing: 'Processing',
+    unverified: 'Unverified',
+  };
+
+  const icons: Record<string, 'check-circle' | 'times-circle' | 'clock' | 'exclamation-circle'> = {
+    verified: 'check-circle',
+    validated: 'check-circle',
+    expired: 'times-circle',
+    processing: 'clock',
+    unverified: 'exclamation-circle',
+  };
+
+  return {
+    ...config,
+    label: labels[normalizedStatus] || 'Unknown',
+    iconName: icons[normalizedStatus] || 'question-circle',
+  };
 }
 
 function parseCredentialDetailResponse(payload: unknown): Credential {
@@ -194,6 +231,10 @@ export default function CredentialDetailScreen() {
 
   const units = Array.isArray(credential.units) ? credential.units : [];
   const evidence = Array.isArray(credential.evidence) ? credential.evidence : [];
+  const effectiveStatus = inferStatus(credential);
+  const statusDisplay = getStatusDisplay(effectiveStatus);
+  const issuedAt = formatDate(credential.issued_at);
+  const expiresAt = credential.expires_at ? formatDate(credential.expires_at) : 'Never';
 
   return (
     <SafeAreaView testID="credential-detail-root" style={styles.safe}>
@@ -224,6 +265,74 @@ export default function CredentialDetailScreen() {
         <View style={styles.cardWrap}>
           <CredentialCard credential={credential} />
         </View>
+
+        {/* Issuer Info Section */}
+        <View style={styles.issuerSection}>
+          <View style={styles.issuerLeft}>
+            <View style={styles.issuerLogoContainer}>
+              {credential.issuer_logo_url ? (
+                <Image
+                  source={{ uri: credential.issuer_logo_url }}
+                  style={styles.issuerLogo}
+                  resizeMode="contain"
+                />
+              ) : (
+                <FontAwesome5 name="building" size={20} color={colors.brand.blue} />
+              )}
+            </View>
+            <View style={styles.issuerDetails}>
+              <Text style={styles.issuerName}>{credential.issuer_name}</Text>
+              {credential.rto_code && (
+                <Text style={styles.rtoCode}>RTO: {credential.rto_code}</Text>
+              )}
+            </View>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: statusDisplay.bg, borderColor: statusDisplay.border }]}>
+            <FontAwesome5 name={statusDisplay.iconName} size={12} color={statusDisplay.text} solid />
+            <Text style={[styles.statusBadgeText, { color: statusDisplay.text }]}>{statusDisplay.label}</Text>
+          </View>
+        </View>
+
+        {/* Dates Grid */}
+        <View style={styles.datesPanel}>
+          <View style={styles.dateItem}>
+            <View style={styles.dateIconContainer}>
+              <FontAwesome5 name="calendar-check" size={16} color={colors.brand.blue} />
+            </View>
+            <View>
+              <Text style={styles.dateLabel}>Issue Date</Text>
+              <Text style={styles.dateValue}>{issuedAt}</Text>
+            </View>
+          </View>
+          <View style={styles.dateDivider} />
+          <View style={styles.dateItem}>
+            <View style={styles.dateIconContainer}>
+              <FontAwesome5 name="calendar-times" size={16} color={effectiveStatus === 'expired' ? colors.danger : colors.brand.blue} />
+            </View>
+            <View>
+              <Text style={styles.dateLabel}>Expires</Text>
+              <Text style={[styles.dateValue, effectiveStatus === 'expired' && styles.dateValueExpired]}>{expiresAt}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Licence ID */}
+        {credential.licence_id && (
+          <View style={styles.licencePanel}>
+            <Text style={styles.licenceLabel}>Licence / Certificate ID</Text>
+            <View style={styles.licenceRow}>
+              <Text style={styles.licenceValue}>{credential.licence_id}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Copy licence ID"
+                onPress={() => Alert.alert('Copied', 'Licence ID copied to clipboard')}
+                style={({ pressed }) => [styles.copyButton, pressed && styles.buttonPressed]}
+              >
+                <FontAwesome5 name="copy" size={14} color={colors.brand.blue} />
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Units of competency</Text>
@@ -398,6 +507,148 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: layout.cardMaxWidth,
     alignSelf: 'center',
+  },
+  // Issuer Section
+  issuerSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bg.surface,
+    borderRadius: radii.xl,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.soft,
+  },
+  issuerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  issuerLogoContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    backgroundColor: colors.bg.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  issuerLogo: {
+    width: 32,
+    height: 32,
+  },
+  issuerDetails: {
+    flex: 1,
+    gap: 2,
+  },
+  issuerName: {
+    fontSize: fontSizes.md,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  rtoCode: {
+    fontSize: fontSizes.xs,
+    fontWeight: '600',
+    color: colors.text.muted,
+    fontFamily: 'SpaceMono',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
+  statusBadgeText: {
+    fontSize: fontSizes.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  // Dates Panel
+  datesPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg.surface,
+    borderRadius: radii.xl,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.soft,
+  },
+  dateItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  dateIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(43, 201, 244, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateLabel: {
+    fontSize: fontSizes.xs,
+    fontWeight: '600',
+    color: colors.text.muted,
+    textTransform: 'uppercase',
+  },
+  dateValue: {
+    fontSize: fontSizes.md,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  dateValueExpired: {
+    color: colors.danger,
+  },
+  dateDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.sm,
+  },
+  // Licence Panel
+  licencePanel: {
+    backgroundColor: colors.bg.surface,
+    borderRadius: radii.xl,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.soft,
+  },
+  licenceLabel: {
+    fontSize: fontSizes.xs,
+    fontWeight: '600',
+    color: colors.text.muted,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  },
+  licenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  licenceValue: {
+    fontSize: fontSizes.lg,
+    fontWeight: '800',
+    color: colors.text.primary,
+    fontFamily: 'SpaceMono',
+    letterSpacing: 1,
+  },
+  copyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(43, 201, 244, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingWrap: {
     flex: 1,

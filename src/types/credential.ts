@@ -1,9 +1,11 @@
+import type { CardThemeKey } from '@/src/theme/tokens';
+
 export type CredentialUnit = {
   code: string;
   title?: string;
 };
 
-export type CredentialStatus = 'verified' | 'unverified';
+export type CredentialStatus = 'verified' | 'unverified' | 'expired' | 'processing';
 
 export type CredentialEvidenceKind = 'image';
 
@@ -24,4 +26,9 @@ export type Credential = {
   units?: CredentialUnit[];
   status?: CredentialStatus;
   evidence?: CredentialEvidence[];
+  // New fields for mockup matching
+  category?: string;                 // e.g., "Safety Cert", "Healthcare", "Heavy Machinery"
+  colorTheme?: CardThemeKey;         // Theme key from tokens.cardThemes
+  licence_id?: string;               // License/certificate number
+  rto_code?: string;                 // RTO (Registered Training Organisation) code
 };

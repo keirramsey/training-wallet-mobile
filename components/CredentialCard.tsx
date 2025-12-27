@@ -1,26 +1,36 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fontSizes, radii, shadows, spacing } from '@/src/theme/tokens';
-import type { Credential } from '@/src/types/credential';
+import {
+  animation,
+  card as cardTokens,
+  cardThemes,
+  colors,
+  fontSizes,
+  radii,
+  shadows,
+  spacing,
+  statusColors,
+} from '@/src/theme/tokens';
+import type { Credential, CredentialStatus } from '@/src/types/credential';
+import { inferColorTheme, inferStatus } from '@/src/data/demoCredentials';
 
 type Props = {
   credential: Partial<Credential> & { id: string };
+  // New API (expand/collapse behavior)
+  isActive?: boolean;
+  onActivate?: () => void;  // Called when clicking an inactive card
+  onNavigate?: () => void;  // Called when clicking an already-active card
+  // Legacy API (backwards compatibility)
   onPress?: () => void;
 };
 
-function inferCategory(title: string, units: Credential['units']): string {
-  const t = title.toLowerCase();
-  if (t.includes('first aid') || t.includes('hltaid')) return 'First Aid Ticket';
-  if (t.includes('chainsaw') || t.includes('arbor')) return 'Chainsaw Ticket';
-  if (t.includes('white card') || t.includes('construction')) return 'Construction Ticket';
-  if (t.includes('forklift')) return 'Heavy Machinery';
-  const firstUnit = Array.isArray(units) && units.length > 0 ? units[0]?.code : '';
-  if (firstUnit && typeof firstUnit === 'string') return 'Safety Cert';
-  return 'Credential';
-}
+// Legacy export for backwards compatibility
+export const CARD_HEIGHT = cardTokens.expanded.height;
+export const CARD_HEIGHT_COLLAPSED = cardTokens.collapsed.height;
+export const CARD_SPACING = cardTokens.spacing;
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return '—';
@@ -29,286 +39,498 @@ function formatDate(iso: string | undefined): string {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
 }
 
-function getStatusLabel(status: Credential['status']): { label: string; tone: 'good' | 'warn' } {
-  if (status === 'verified') return { label: 'Verified', tone: 'good' };
-  return { label: 'Unverified', tone: 'warn' };
+function getStatusConfig(status: CredentialStatus | undefined) {
+  const normalizedStatus = status || 'unverified';
+  const config = statusColors[normalizedStatus] || statusColors.unverified;
+
+  const labels: Record<string, string> = {
+    verified: 'Verified',
+    validated: 'Verified',
+    expired: 'Expired',
+    processing: 'Processing',
+    unverified: 'Unverified',
+  };
+
+  const icons: Record<string, 'check-circle' | 'times-circle' | 'clock-o' | 'exclamation-circle'> = {
+    verified: 'check-circle',
+    validated: 'check-circle',
+    expired: 'times-circle',
+    processing: 'clock-o',
+    unverified: 'exclamation-circle',
+  };
+
+  return {
+    ...config,
+    label: labels[normalizedStatus] || 'Unknown',
+    iconName: icons[normalizedStatus] || 'question-circle',
+  };
 }
 
-export function CredentialCard({ credential, onPress }: Props) {
+function inferCategory(credential: Partial<Credential>): string {
+  if (credential.category) return credential.category;
+
+  const title = (credential.title || '').toLowerCase();
+  if (title.includes('first aid') || title.includes('cpr')) return 'Healthcare';
+  if (title.includes('construction') || title.includes('safety')) return 'Safety Cert';
+  if (title.includes('forklift') || title.includes('machinery')) return 'Heavy Machinery';
+  if (title.includes('traffic')) return 'Traffic';
+  if (title.includes('white card') || title.includes('induction')) return 'Induction';
+  if (title.includes('height')) return 'Construction';
+
+  return 'Credential';
+}
+
+export function CredentialCard({ credential, isActive = true, onActivate, onNavigate, onPress }: Props) {
   const [logoError, setLogoError] = useState(false);
 
+  // Legacy mode: if onPress is provided but not onActivate/onNavigate, use legacy behavior
+  const isLegacyMode = Boolean(onPress) && !onActivate && !onNavigate;
+
+  // In legacy mode, always show as active (expanded)
+  const effectiveActive = isLegacyMode ? true : isActive;
+
+  // Animation values
+  const heightAnim = useRef(new Animated.Value(effectiveActive ? cardTokens.expanded.height : cardTokens.collapsed.height)).current;
+  const opacityAnim = useRef(new Animated.Value(effectiveActive ? 1 : cardTokens.inactiveOpacity)).current;
+  const scaleAnim = useRef(new Animated.Value(effectiveActive ? 1 : cardTokens.inactiveScale)).current;
+  const detailsOpacityAnim = useRef(new Animated.Value(effectiveActive ? 1 : 0)).current;
+  const logoScaleAnim = useRef(new Animated.Value(effectiveActive ? 1 : 0)).current;
+
+  // Animate on state change (skip in legacy mode)
+  useEffect(() => {
+    if (isLegacyMode) return; // No animations in legacy mode
+
+    const targetHeight = effectiveActive ? cardTokens.expanded.height : cardTokens.collapsed.height;
+    const targetOpacity = effectiveActive ? 1 : cardTokens.inactiveOpacity;
+    const targetScale = effectiveActive ? 1 : cardTokens.inactiveScale;
+    const targetDetailsOpacity = effectiveActive ? 1 : 0;
+    const targetLogoScale = effectiveActive ? 1 : 0;
+
+    Animated.parallel([
+      Animated.timing(heightAnim, {
+        toValue: targetHeight,
+        duration: animation.expandDuration,
+        useNativeDriver: false, // height can't use native driver
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: targetOpacity,
+        duration: animation.expandDuration,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: targetScale,
+        duration: animation.expandDuration,
+        useNativeDriver: true,
+      }),
+      Animated.timing(detailsOpacityAnim, {
+        toValue: targetDetailsOpacity,
+        duration: animation.expandDuration,
+        delay: effectiveActive ? 75 : 0, // Delay showing details on expand
+        useNativeDriver: true,
+      }),
+      Animated.timing(logoScaleAnim, {
+        toValue: targetLogoScale,
+        duration: animation.expandDuration,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [effectiveActive, isLegacyMode, heightAnim, opacityAnim, scaleAnim, detailsOpacityAnim, logoScaleAnim]);
+
+  // Credential data
   const title = credential.title?.trim() || 'Credential';
   const issuer = credential.issuer_name?.trim() || 'Issuer';
-  const category = useMemo(() => inferCategory(title, credential.units), [credential.units, title]);
+  const category = useMemo(() => inferCategory(credential), [credential]);
+  const licenceId = credential.licence_id || credential.id;
 
   const issuedAt = formatDate(credential.issued_at);
-  const expiresAt = credential.expires_at ? formatDate(credential.expires_at) : 'No expiry';
+  const expiresAt = credential.expires_at ? formatDate(credential.expires_at) : 'Never';
 
-  const status = useMemo(() => getStatusLabel(credential.status), [credential.status]);
+  // Status and theme
+  const effectiveStatus = inferStatus(credential as Credential);
+  const statusConfig = useMemo(() => getStatusConfig(effectiveStatus), [effectiveStatus]);
+
+  const themeKey = credential.colorTheme || inferColorTheme(credential as Credential) || 'cyan';
+  const theme = cardThemes[themeKey] || cardThemes.cyan;
+
   const showLogo = Boolean(credential.issuer_logo_url) && !logoError;
 
+  const handlePress = () => {
+    // Legacy mode: just call onPress
+    if (isLegacyMode && onPress) {
+      onPress();
+      return;
+    }
+
+    // New mode: expand/collapse behavior
+    if (effectiveActive) {
+      onNavigate?.();
+    } else {
+      onActivate?.();
+    }
+  };
+
   return (
-    <Pressable
-      accessibilityRole={onPress ? 'button' : undefined}
-      onPress={onPress}
-      disabled={!onPress}
-      // @ts-expect-error `dataSet` is supported by react-native-web (used for deterministic E2E selectors).
-      dataSet={{ ticketId: credential.id }}
-      style={({ pressed }) => [styles.cardOuter, pressed && onPress ? styles.cardPressed : null]}
+    <Animated.View
+      style={[
+        styles.cardContainer,
+        {
+          height: heightAnim,
+          opacity: opacityAnim,
+          transform: [{ scale: scaleAnim }],
+        },
+      ]}
     >
-      <LinearGradient
-        colors={[colors.brand.cyan, colors.brand.blue]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.card}
+      <Pressable
+        accessibilityRole="button"
+        onPress={handlePress}
+        // @ts-expect-error `dataSet` is supported by react-native-web
+        dataSet={{ ticketId: credential.id }}
+        style={({ pressed }) => [
+          styles.cardPressable,
+          pressed ? styles.cardPressed : null,
+        ]}
       >
-        <View style={styles.topRow}>
-          <View style={styles.topLeft}>
-            <View style={styles.logoSlot}>
-              {showLogo ? (
-                <Image
-                  accessibilityLabel={`${issuer} logo`}
-                  source={{ uri: credential.issuer_logo_url as string }}
-                  style={styles.logo}
-                  resizeMode="contain"
-                  onError={() => setLogoError(true)}
-                />
-              ) : (
-                <View style={styles.logoFallback}>
-                  <Text style={styles.logoFallbackText}>{issuer.slice(0, 1).toUpperCase()}</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.topText}>
-              <Text style={styles.category} numberOfLines={1}>
-                {category}
-              </Text>
-              <Text style={styles.issuer} numberOfLines={1}>
-                {issuer}
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.statusChip, status.tone === 'good' ? styles.statusChipGood : styles.statusChipWarn]}>
-            <FontAwesome
-              name={status.tone === 'good' ? 'check-circle' : 'exclamation-circle'}
-              size={13}
-              color={colors.text.inverse}
-            />
-            <Text style={styles.statusChipText}>{status.label}</Text>
-          </View>
-        </View>
-
-        <Text style={styles.title} numberOfLines={2}>
-          {title}
-        </Text>
-
-        <View style={styles.metaRow}>
-          <View style={styles.metaCell}>
-            <Text style={styles.metaLabel}>Issue date</Text>
-            <Text style={styles.metaValue}>{issuedAt}</Text>
-          </View>
-          <View style={styles.metaCell}>
-            <Text style={styles.metaLabel}>Expires</Text>
-            <Text style={styles.metaValue}>{expiresAt}</Text>
-          </View>
-        </View>
-
-        <View style={styles.bottomRow}>
-          <Text style={styles.idLabel}>Licence ID</Text>
-          <Text style={styles.idText} numberOfLines={1}>
-            {credential.id}
-          </Text>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="QR (coming soon)"
-          onPress={(event) => {
-            event.stopPropagation?.();
-          }}
-          style={({ pressed }) => [styles.qrButton, pressed ? styles.qrButtonPressed : null]}
+        <LinearGradient
+          colors={[theme.from, theme.to]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.card}
         >
-          <FontAwesome name="qrcode" size={18} color={colors.text.inverse} />
-        </Pressable>
+          {/* Top shine effect (visible when active) */}
+          {effectiveActive && (
+            <>
+              <View style={styles.shineTop} pointerEvents="none" />
+              <View style={styles.shineBottom} pointerEvents="none" />
+            </>
+          )}
 
-        <View pointerEvents="none" style={styles.shine} />
-      </LinearGradient>
-    </Pressable>
+          {/* Header Content - Always Visible */}
+          <Animated.View
+            style={[
+              styles.headerRow,
+              { paddingTop: effectiveActive ? 16 : 0 },
+            ]}
+          >
+            <View style={styles.headerLeft}>
+              {/* Logo - Animated visibility */}
+              <Animated.View
+                style={[
+                  styles.logoSlot,
+                  {
+                    opacity: logoScaleAnim,
+                    transform: [{ scale: logoScaleAnim }],
+                    width: effectiveActive ? 40 : 0,
+                    marginRight: effectiveActive ? 12 : 0,
+                  },
+                ]}
+              >
+                {showLogo ? (
+                  <Image
+                    accessibilityLabel={`${issuer} logo`}
+                    source={{ uri: credential.issuer_logo_url as string }}
+                    style={styles.logo}
+                    resizeMode="contain"
+                    onError={() => setLogoError(true)}
+                  />
+                ) : (
+                  <Text style={styles.logoFallbackText}>{issuer.slice(0, 1).toUpperCase()}</Text>
+                )}
+              </Animated.View>
+
+              <View style={styles.headerText}>
+                <Text
+                  style={[
+                    styles.category,
+                    { opacity: effectiveActive ? 0.7 : 0.6 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {category}
+                </Text>
+                <Text style={styles.title} numberOfLines={1}>
+                  {title}
+                </Text>
+              </View>
+            </View>
+
+            {/* Status Chip */}
+            <View
+              style={[
+                styles.statusChip,
+                {
+                  backgroundColor: statusConfig.bg,
+                  borderColor: statusConfig.border,
+                },
+                effectiveActive ? styles.statusChipActive : styles.statusChipCollapsed,
+              ]}
+            >
+              <FontAwesome
+                name={statusConfig.iconName}
+                size={14}
+                color={statusConfig.text}
+              />
+              <Text style={[styles.statusChipText, { color: statusConfig.text }]}>
+                {statusConfig.label}
+              </Text>
+            </View>
+          </Animated.View>
+
+          {/* Expanded Content - Only visible when active */}
+          <Animated.View
+            style={[
+              styles.expandedContent,
+              {
+                opacity: detailsOpacityAnim,
+                transform: [{
+                  translateY: detailsOpacityAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [16, 0],
+                  }),
+                }],
+              },
+            ]}
+            pointerEvents={effectiveActive ? 'auto' : 'none'}
+          >
+            {/* Dates Grid */}
+            <View style={styles.datesGrid}>
+              <View style={styles.dateCell}>
+                <Text style={styles.dateLabel}>Issue Date</Text>
+                <Text style={styles.dateValue}>{issuedAt}</Text>
+              </View>
+              <View style={styles.dateCell}>
+                <Text style={styles.dateLabel}>Licence ID</Text>
+                <Text style={styles.licenceId}>{licenceId}</Text>
+              </View>
+            </View>
+
+            {/* Bottom Row with Expiry and QR */}
+            <View style={styles.bottomRow}>
+              <View style={styles.expirySection}>
+                <Text style={styles.expiryLabel}>Expires</Text>
+                <View style={styles.expiryValue}>
+                  <FontAwesome name="calendar" size={18} color={colors.text.inverse} />
+                  <Text style={styles.expiryDate}>{expiresAt}</Text>
+                </View>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View QR code"
+                onPress={(event) => {
+                  event.stopPropagation?.();
+                  // TODO: Open QR modal
+                }}
+                style={({ pressed }) => [styles.qrButton, pressed ? styles.qrButtonPressed : null]}
+              >
+                <FontAwesome name="qrcode" size={28} color={colors.text.primary} />
+              </Pressable>
+            </View>
+          </Animated.View>
+        </LinearGradient>
+      </Pressable>
+    </Animated.View>
   );
 }
 
-export const CARD_HEIGHT = 236;
-
 const styles = StyleSheet.create({
-  cardOuter: {
+  cardContainer: {
     width: '100%',
-    height: CARD_HEIGHT,
-    borderRadius: radii.xl,
+    borderRadius: cardTokens.borderRadius,
     ...shadows.card,
+    overflow: 'hidden',
+  },
+  cardPressable: {
+    flex: 1,
   },
   cardPressed: {
-    transform: [{ scale: 0.99 }],
     opacity: 0.98,
   },
   card: {
     flex: 1,
-    borderRadius: radii.xl,
-    padding: spacing.lg,
+    borderRadius: cardTokens.borderRadius,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     overflow: 'hidden',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
   },
-  topRow: {
+
+  // Shine effects (from mockup)
+  shineTop: {
+    position: 'absolute',
+    top: -48,
+    right: -48,
+    width: 192,
+    height: 192,
+    borderRadius: 96,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  shineBottom: {
+    position: 'absolute',
+    bottom: -32,
+    left: -32,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+
+  // Header (always visible)
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
   },
-  topLeft: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
     flex: 1,
-    paddingRight: spacing.sm,
+    paddingRight: 8,
   },
-  topText: {
+  headerText: {
     flex: 1,
     gap: 2,
   },
   logoSlot: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.lg,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: colors.bg.surface,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   logo: {
-    width: 34,
-    height: 34,
-  },
-  logoFallback: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+    borderRadius: 6,
   },
   logoFallbackText: {
-    color: colors.text.inverse,
+    color: colors.text.primary,
     fontWeight: '900',
     fontSize: 16,
   },
   category: {
-    color: 'rgba(255,255,255,0.84)',
-    fontSize: fontSizes.xs,
-    fontWeight: '900',
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
   },
   title: {
     color: colors.text.inverse,
-    fontSize: fontSizes.xl,
-    fontWeight: '900',
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
     letterSpacing: 0.2,
   },
-  issuer: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: fontSizes.sm,
-    fontWeight: '700',
-  },
-  metaRow: {
-    marginTop: spacing.md,
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  metaCell: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.xl,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  metaLabel: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: fontSizes.xs,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  metaValue: {
-    marginTop: 3,
-    color: colors.text.inverse,
-    fontSize: fontSizes.sm,
-    fontWeight: '800',
-  },
-  bottomRow: {
-    marginTop: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  idLabel: {
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: fontSizes.xs,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  idText: {
-    flex: 1,
-    color: 'rgba(255,255,255,0.85)',
-    fontFamily: 'SpaceMono',
-    fontSize: 11,
-    fontWeight: '800',
-  },
+
+  // Status chip
   statusChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 7,
+    paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: radii.pill,
-  },
-  statusChipGood: {
-    backgroundColor: 'rgba(16,185,129,0.24)',
     borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.36)',
   },
-  statusChipWarn: {
-    backgroundColor: 'rgba(245,158,11,0.24)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.36)',
+  statusChipActive: {
+    // Positioned normally in header when active
+  },
+  statusChipCollapsed: {
+    // Same position in collapsed state
   },
   statusChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Expanded content
+  expandedContent: {
+    position: 'absolute',
+    top: 70,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    paddingTop: 8,
+    justifyContent: 'space-between',
+  },
+
+  // Dates grid
+  datesGrid: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  dateCell: {
+    flex: 1,
+  },
+  dateLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  dateValue: {
     color: colors.text.inverse,
     fontSize: fontSizes.sm,
-    fontWeight: '900',
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
+  licenceId: {
+    color: colors.text.inverse,
+    fontSize: fontSizes.sm,
+    fontFamily: 'SpaceMono',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+
+  // Bottom row
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  expirySection: {
+    flex: 1,
+  },
+  expiryLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  expiryValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  expiryDate: {
+    color: colors.text.inverse,
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
+  },
+
+  // QR button
   qrButton: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: radii.lg,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.bg.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    ...shadows.soft,
   },
   qrButtonPressed: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  shine: {
-    position: 'absolute',
-    top: -90,
-    right: -140,
-    width: 250,
-    height: 250,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    transform: [{ rotate: '18deg' }],
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
   },
 });

@@ -25,6 +25,7 @@ import { CredentialCard, CARD_HEIGHT } from '@/components/CredentialCard';
 import { apiFetch } from '@/src/lib/api';
 import { buildNeedMoreTrainingUrl } from '@/services/searchTraining';
 import { getLocalCredentials } from '@/src/storage/credentialsStore';
+import { DEMO_CREDENTIALS } from '@/src/data/demoCredentials';
 import type { Credential } from '@/src/types/credential';
 import { colors, fontSizes, layout, radii, shadows, spacing } from '@/src/theme/tokens';
 
@@ -254,9 +255,17 @@ export default function WalletScreen() {
         setError(normalizeApiError(apiErr));
       }
 
-      setItems(mergeCredentials(apiItems, local));
+      const merged = mergeCredentials(apiItems, local);
+
+      // Fall back to demo data if no credentials available
+      if (merged.length === 0) {
+        setItems(DEMO_CREDENTIALS);
+      } else {
+        setItems(merged);
+      }
     } catch (err) {
-      setItems([]);
+      // On complete failure, show demo data instead of empty state
+      setItems(DEMO_CREDENTIALS);
       setError(normalizeApiError(err));
     } finally {
       if (mode === 'refresh') setRefreshing(false);
@@ -335,30 +344,35 @@ export default function WalletScreen() {
 
   const bottomPills = (
     <View pointerEvents="box-none" style={[styles.bottomActionsLayer, { bottom: pillsBottom }]}>
+      {/* Add Ticket button - primary blue */}
       <Pressable
         accessibilityRole="button"
         onPress={onAddTicket}
         style={({ pressed }) => [
-          styles.bottomPill,
-          styles.bottomPillPrimary,
+          styles.addTicketPill,
           pressed ? styles.bottomPillPressed : null,
         ]}
       >
-        <FontAwesome name="plus" size={14} color={colors.text.inverse} />
-        <Text style={styles.bottomPillPrimaryText}>+ Add Ticket</Text>
+        <FontAwesome name="plus" size={18} color={colors.text.inverse} />
+        <Text style={styles.addTicketText}>Add Ticket</Text>
       </Pressable>
 
+      {/* Search Training button - with ST branding */}
       <Pressable
         accessibilityRole="button"
         onPress={onFindTraining}
         style={({ pressed }) => [
-          styles.bottomPill,
-          styles.bottomPillSecondary,
+          styles.searchTrainingPill,
           pressed ? styles.bottomPillPressed : null,
         ]}
       >
-        <FontAwesome name="search" size={14} color={colors.brand.blueDeep} />
-        <Text style={styles.bottomPillSecondaryText}>Search Training</Text>
+        <View style={styles.stLogo}>
+          <FontAwesome name="graduation-cap" size={18} color={colors.text.inverse} />
+        </View>
+        <View style={styles.stTextContainer}>
+          <Text style={styles.stTitle}>Search Training</Text>
+          <Text style={styles.stSubtitle}>Australia's Training Marketplace</Text>
+        </View>
       </Pressable>
     </View>
   );
@@ -707,14 +721,25 @@ export default function WalletScreen() {
                 <Text style={styles.name}>Alex Johnson</Text>
               </View>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Notifications (coming soon)"
-              onPress={onBell}
-              style={({ pressed }) => [styles.iconCircle, pressed ? styles.iconCirclePressed : null]}
-            >
-              <FontAwesome name="bell-o" size={18} color={colors.text.primary} />
-            </Pressable>
+            <View style={styles.headerIcons}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
+                onPress={() => router.push('/profile')}
+                style={({ pressed }) => [styles.iconCircle, pressed ? styles.iconCirclePressed : null]}
+              >
+                <FontAwesome name="cog" size={18} color={colors.text.primary} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Notifications"
+                onPress={onBell}
+                style={({ pressed }) => [styles.iconCircle, pressed ? styles.iconCirclePressed : null]}
+              >
+                <FontAwesome name="bell-o" size={18} color={colors.text.primary} />
+                <View style={styles.notificationDot} />
+              </Pressable>
+            </View>
           </View>
 
           {actionItems.length > 0 && (
@@ -923,6 +948,22 @@ const styles = StyleSheet.create({
   },
   iconCirclePressed: {
     opacity: 0.9,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: colors.bg.surface,
   },
   titleRow: {
     flexDirection: 'row',
@@ -1206,37 +1247,66 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  bottomPill: {
-    flex: 1,
+  // Add Ticket pill - compact primary style
+  addTicketPill: {
     height: PILLS_HEIGHT,
     borderRadius: radii.pill,
-    paddingHorizontal: 14,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
-    ...shadows.soft,
-  },
-  bottomPillPrimary: {
     backgroundColor: colors.brand.blue,
+    ...shadows.card,
   },
-  bottomPillPrimaryText: {
+  addTicketText: {
     color: colors.text.inverse,
-    fontWeight: '900',
-    fontSize: fontSizes.sm,
+    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 0.3,
   },
-  bottomPillSecondary: {
+  // Search Training pill - expanded with ST branding
+  searchTrainingPill: {
+    flex: 1,
+    height: PILLS_HEIGHT,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
     backgroundColor: colors.bg.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    ...shadows.soft,
   },
-  bottomPillSecondaryText: {
-    color: colors.brand.blueDeep,
-    fontWeight: '900',
+  stLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.brand.searchTraining,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.soft,
+  },
+  stTextContainer: {
+    flex: 1,
+    gap: 1,
+  },
+  stTitle: {
+    color: colors.text.primary,
+    fontWeight: '700',
     fontSize: fontSizes.sm,
+  },
+  stSubtitle: {
+    color: colors.text.muted,
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
   bottomPillPressed: {
     opacity: 0.92,
+    transform: [{ scale: 0.99 }],
   },
   fabLayer: {
     ...StyleSheet.absoluteFillObject,

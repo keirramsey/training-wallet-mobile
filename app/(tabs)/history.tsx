@@ -1,22 +1,25 @@
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
 import { apiFetch } from '@/src/lib/api';
+import { DEMO_CREDENTIALS, inferStatus } from '@/src/data/demoCredentials';
 import { getLocalCredentials } from '@/src/storage/credentialsStore';
+import { colors, fontSizes, layout, radii, shadows, spacing, statusColors, cardThemes } from '@/src/theme/tokens';
 import type { Credential } from '@/src/types/credential';
 
-type HistoryFilter = 'all' | 'current' | 'expired' | 'unverified';
+type HistoryFilter = 'all' | 'current' | 'expired';
 
 function normalizeApiError(err: unknown): { message: string; httpStatus?: number } {
   const anyErr = err as { message?: unknown; status?: unknown };
@@ -65,14 +68,38 @@ function isExpired(credential: Credential): boolean {
 }
 
 function formatDate(iso: string | null | undefined): string {
-  if (!iso) return 'No expiry';
+  if (!iso) return 'Never';
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'No expiry';
+  if (Number.isNaN(date.getTime())) return 'Never';
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+}
+
+function getYear(iso: string | undefined): number {
+  if (!iso) return new Date().getFullYear();
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return new Date().getFullYear();
+  return date.getFullYear();
+}
+
+type GroupedCredentials = { year: number; items: Credential[] }[];
+
+function groupByYear(credentials: Credential[]): GroupedCredentials {
+  const groups: Record<number, Credential[]> = {};
+
+  for (const cred of credentials) {
+    const year = getYear(cred.issued_at);
+    if (!groups[year]) groups[year] = [];
+    groups[year].push(cred);
+  }
+
+  return Object.entries(groups)
+    .map(([year, items]) => ({ year: parseInt(year, 10), items }))
+    .sort((a, b) => b.year - a.year);
 }
 
 export default function HistoryScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const [loading, setLoading] = useState(true);
@@ -96,9 +123,14 @@ export default function HistoryScreen() {
         setError(normalizeApiError(apiErr));
       }
 
-      setItems(mergeCredentials(apiItems, local));
+      const merged = mergeCredentials(apiItems, local);
+      if (merged.length === 0) {
+        setItems(DEMO_CREDENTIALS);
+      } else {
+        setItems(merged);
+      }
     } catch (err) {
-      setItems([]);
+      setItems(DEMO_CREDENTIALS);
       setError(normalizeApiError(err));
     } finally {
       if (mode === 'refresh') setRefreshing(false);
@@ -120,271 +152,417 @@ export default function HistoryScreen() {
     if (filter === 'all') return items;
     if (filter === 'expired') return items.filter(isExpired);
     if (filter === 'current') return items.filter((c) => !isExpired(c));
-    if (filter === 'unverified') return items.filter((c) => c.status !== 'verified');
     return items;
   }, [filter, items]);
+
+  const groupedItems = useMemo(() => groupByYear(filteredItems), [filteredItems]);
 
   const onRefresh = useCallback(() => {
     void load('refresh');
   }, [load]);
 
-  const filters: { key: HistoryFilter; label: string }[] = useMemo(
-    () => [
-      { key: 'all', label: 'All' },
-      { key: 'current', label: 'Current' },
-      { key: 'expired', label: 'Expired' },
-      { key: 'unverified', label: 'Unverified' },
-    ],
-    []
-  );
+  const filters: { key: HistoryFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'current', label: 'Current' },
+    { key: 'expired', label: 'Expired' },
+  ];
 
   return (
-    <ScreenContainer scroll={false} style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.title}>History</Text>
-        <Text style={styles.subtitle}>A compact list of your training credentials.</Text>
-      </View>
-
-      <View style={styles.filterRow}>
-        {filters.map((chip) => {
-          const active = chip.key === filter;
-          return (
-            <Pressable
-              key={chip.key}
-              accessibilityRole="button"
-              onPress={() => setFilter(chip.key)}
-              style={({ pressed }) => [
-                styles.filterChip,
-                active ? styles.filterChipActive : null,
-                pressed ? styles.pressed : null,
-              ]}
-            >
-              <Text style={[styles.filterText, active ? styles.filterTextActive : null]}>
-                {chip.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {loading && (
-        <View style={styles.center}>
-          <ActivityIndicator />
-          <Text style={styles.muted}>Loading…</Text>
+    <View style={styles.safe}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: insets.bottom + 100 },
+        ]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>History</Text>
+          <Text style={styles.subtitle}>Your training credential timeline</Text>
         </View>
-      )}
 
-      {!loading && error && items.length === 0 && (
-        <View style={[styles.panel, styles.errorPanel]}>
-          <Text style={styles.panelTitle}>Couldn’t load</Text>
-          <Text style={styles.panelBody}>
-            {typeof error.httpStatus === 'number'
-              ? `HTTP ${error.httpStatus}: ${error.message}`
-              : error.message}
-          </Text>
-        </View>
-      )}
-
-      {!loading && error && items.length > 0 && (
-        <View style={[styles.panel, styles.warnPanel]}>
-          <Text style={styles.panelBody}>
-            {typeof error.httpStatus === 'number'
-              ? `Sync issue (HTTP ${error.httpStatus}) — showing local credentials`
-              : 'Sync issue — showing local credentials'}
-          </Text>
-        </View>
-      )}
-
-      {!loading && (
-        <FlatList
-          data={filteredItems}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          renderItem={({ item }) => {
-            const expired = isExpired(item);
-            const unverified = item.status !== 'verified';
-            const statusLabel = expired ? 'Expired' : unverified ? 'Unverified' : 'Current';
-            const statusTone = expired ? 'bad' : unverified ? 'warn' : 'good';
-
+        {/* Filter Chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          {filters.map((chip) => {
+            const active = chip.key === filter;
             return (
               <Pressable
+                key={chip.key}
                 accessibilityRole="button"
-                onPress={() => router.push(`/credential/${item.id}`)}
-                style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
+                onPress={() => setFilter(chip.key)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  active && styles.filterChipActive,
+                  pressed && styles.pressed,
+                ]}
               >
-                <View style={styles.rowLeft}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.rowIssuer} numberOfLines={1}>
-                    {item.issuer_name}
-                  </Text>
-                  <Text style={styles.rowMeta}>Expiry: {formatDate(item.expires_at)}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.statusPill,
-                    statusTone === 'good'
-                      ? styles.statusGood
-                      : statusTone === 'warn'
-                        ? styles.statusWarn
-                        : styles.statusBad,
-                  ]}
-                >
-                  <Text style={styles.statusText}>{statusLabel}</Text>
-                </View>
+                <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                  {chip.label}
+                </Text>
               </Pressable>
             );
-          }}
-          ListEmptyComponent={
-            <View style={styles.panel}>
-              <Text style={styles.panelBody}>No credentials match this filter.</Text>
+          })}
+        </ScrollView>
+
+        {/* Loading State */}
+        {loading && (
+          <View style={styles.center}>
+            <ActivityIndicator color={colors.brand.blue} />
+            <Text style={styles.muted}>Loading credentials...</Text>
+          </View>
+        )}
+
+        {/* Error State */}
+        {!loading && error && items.length === 0 && (
+          <View style={[styles.panel, styles.errorPanel]}>
+            <Text style={styles.panelTitle}>Couldn't load</Text>
+            <Text style={styles.panelBody}>
+              {typeof error.httpStatus === 'number'
+                ? `HTTP ${error.httpStatus}: ${error.message}`
+                : error.message}
+            </Text>
+          </View>
+        )}
+
+        {/* Grouped Credentials by Year */}
+        {!loading && groupedItems.map((group) => (
+          <View key={group.year} style={styles.yearSection}>
+            <View style={styles.yearHeader}>
+              <View style={styles.yearLine} />
+              <Text style={styles.yearLabel}>{group.year}</Text>
+              <View style={styles.yearLine} />
             </View>
-          }
-        />
-      )}
-    </ScreenContainer>
+
+            <View style={styles.ticketList}>
+              {group.items.map((item) => {
+                const expired = isExpired(item);
+                const status = inferStatus(item);
+                const statusLabel = expired ? 'Expired' : status === 'verified' ? 'Active' : 'Processing';
+                const themeKey = item.colorTheme || 'cyan';
+                const theme = cardThemes[themeKey] || cardThemes.cyan;
+
+                return (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="button"
+                    onPress={() => router.push(`/credential/${item.id}`)}
+                    style={({ pressed }) => [
+                      styles.ticketStub,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    {/* Left Color Strip */}
+                    <View style={[styles.ticketStrip, { backgroundColor: theme.from }]} />
+
+                    {/* Decorative Holes */}
+                    <View style={styles.ticketHoles}>
+                      <View style={styles.ticketHole} />
+                      <View style={styles.ticketHole} />
+                      <View style={styles.ticketHole} />
+                    </View>
+
+                    {/* Content */}
+                    <View style={styles.ticketContent}>
+                      <View style={styles.ticketTop}>
+                        <View style={styles.ticketInfo}>
+                          <Text style={styles.ticketTitle} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={styles.ticketIssuer} numberOfLines={1}>
+                            {item.issuer_name}
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            expired ? styles.statusExpired : styles.statusActive,
+                          ]}
+                        >
+                          <FontAwesome5
+                            name={expired ? 'times-circle' : 'check-circle'}
+                            size={10}
+                            color={expired ? colors.danger : colors.success}
+                            solid
+                          />
+                          <Text
+                            style={[
+                              styles.statusText,
+                              expired ? styles.statusTextExpired : styles.statusTextActive,
+                            ]}
+                          >
+                            {statusLabel}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.ticketBottom}>
+                        <View style={styles.ticketMeta}>
+                          <FontAwesome5 name="calendar-alt" size={12} color={colors.text.muted} />
+                          <Text style={styles.ticketDate}>
+                            Expires: {formatDate(item.expires_at)}
+                          </Text>
+                        </View>
+                        <FontAwesome5 name="chevron-right" size={12} color={colors.text.muted} />
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+
+        {/* Empty State */}
+        {!loading && filteredItems.length === 0 && (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <FontAwesome5 name="history" size={32} color={colors.text.muted} />
+            </View>
+            <Text style={styles.emptyTitle}>No credentials found</Text>
+            <Text style={styles.emptyBody}>
+              {filter === 'expired'
+                ? 'No expired credentials in your history.'
+                : filter === 'current'
+                  ? 'No active credentials found.'
+                  : 'Your credential history will appear here.'}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 0,
+  safe: {
+    flex: 1,
+    backgroundColor: colors.bg.app,
+  },
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    width: '100%',
+    maxWidth: layout.maxWidth,
+    alignSelf: 'center',
+    gap: spacing.lg,
   },
   header: {
-    gap: 6,
+    gap: spacing.xs,
   },
   title: {
-    fontSize: 22,
+    fontSize: fontSizes.xxl,
     fontWeight: '900',
-    color: '#0B1220',
+    color: colors.text.primary,
   },
   subtitle: {
-    color: '#6B7280',
+    color: colors.text.muted,
     fontWeight: '600',
-    fontSize: 12,
+    fontSize: fontSizes.sm,
   },
   filterRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   filterChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: colors.bg.surface,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
   },
   filterChipActive: {
-    backgroundColor: '#ECFEFF',
-    borderColor: '#A5F3FC',
+    backgroundColor: 'rgba(43, 201, 244, 0.1)',
+    borderColor: colors.brand.cyan,
   },
   filterText: {
-    fontWeight: '900',
-    color: '#0B1220',
+    fontWeight: '700',
+    color: colors.text.primary,
+    fontSize: fontSizes.sm,
   },
   filterTextActive: {
-    color: '#0E89BA',
+    color: colors.brand.blue,
   },
   center: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: spacing.sm,
+    paddingVertical: spacing.xxl,
   },
   muted: {
-    color: '#6B7280',
+    color: colors.text.muted,
     fontWeight: '600',
   },
-  listContent: {
-    paddingTop: 6,
-    paddingBottom: 20,
-    gap: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  rowLeft: {
-    flex: 1,
-    gap: 3,
-  },
-  rowTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#111827',
-  },
-  rowIssuer: {
-    color: '#6B7280',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  rowMeta: {
-    color: '#4B5563',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  statusPill: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  statusGood: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#6EE7B7',
-  },
-  statusWarn: {
-    backgroundColor: '#FFFBEB',
-    borderColor: '#FCD34D',
-  },
-  statusBad: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FCA5A5',
-  },
-  statusText: {
-    fontWeight: '900',
-    color: '#0B1220',
-    fontSize: 12,
-  },
   panel: {
-    borderRadius: 16,
-    padding: 14,
-    backgroundColor: '#FFFFFF',
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    backgroundColor: colors.bg.surface,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
   },
   errorPanel: {
     borderColor: '#FCA5A5',
     backgroundColor: '#FEF2F2',
   },
-  warnPanel: {
-    borderColor: '#FCD34D',
-    backgroundColor: '#FFFBEB',
-  },
   panelTitle: {
-    fontSize: 15,
+    fontSize: fontSizes.md,
     fontWeight: '900',
-    color: '#0B1220',
+    color: colors.text.primary,
   },
   panelBody: {
-    marginTop: 6,
-    color: '#374151',
+    marginTop: spacing.xs,
+    color: colors.text.secondary,
     fontWeight: '600',
     lineHeight: 20,
+  },
+  // Year Section
+  yearSection: {
+    gap: spacing.md,
+  },
+  yearHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  yearLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  yearLabel: {
+    fontSize: fontSizes.lg,
+    fontWeight: '900',
+    color: colors.text.primary,
+    paddingHorizontal: spacing.sm,
+  },
+  ticketList: {
+    gap: spacing.sm,
+  },
+  // Ticket Stub
+  ticketStub: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg.surface,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    ...shadows.soft,
+  },
+  ticketStrip: {
+    width: 6,
+  },
+  ticketHoles: {
+    width: 24,
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  ticketHole: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.bg.app,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  ticketContent: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingRight: spacing.md,
+    gap: spacing.sm,
+  },
+  ticketTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  ticketInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  ticketTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  ticketIssuer: {
+    color: colors.text.muted,
+    fontWeight: '600',
+    fontSize: fontSizes.xs,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: radii.pill,
+  },
+  statusActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  statusExpired: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  statusText: {
+    fontWeight: '700',
+    fontSize: 10,
+    textTransform: 'uppercase',
+  },
+  statusTextActive: {
+    color: colors.success,
+  },
+  statusTextExpired: {
+    color: colors.danger,
+  },
+  ticketBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  ticketMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  ticketDate: {
+    color: colors.text.secondary,
+    fontWeight: '600',
+    fontSize: fontSizes.xs,
+  },
+  // Empty State
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    gap: spacing.md,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.bg.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  emptyBody: {
+    color: colors.text.muted,
+    fontWeight: '600',
+    textAlign: 'center',
+    maxWidth: 280,
   },
   pressed: {
     opacity: 0.92,

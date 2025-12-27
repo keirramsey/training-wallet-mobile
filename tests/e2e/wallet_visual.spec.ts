@@ -8,23 +8,46 @@ const seedLocalCredentials = () => [
   {
     id: 'local_20250101_01',
     title: 'Construction Safety L2',
-    issuer_name: 'Search Training RTO',
+    issuer_name: 'OSHA Training Institute',
     issuer_logo_url: null,
     issued_at: '2024-12-12T00:00:00.000Z',
     expires_at: '2025-02-15T00:00:00.000Z',
     status: 'verified',
+    category: 'Safety Cert',
+    colorTheme: 'blue',
+    licence_id: '882-119-220',
+    rto_code: 'RTO 91405',
     units: [{ code: 'CPCCWHS1001', title: 'Prepare to work safely in the construction industry' }],
     evidence: [],
   },
   {
     id: 'local_20250101_02',
     title: 'Forklift Operator',
-    issuer_name: 'Forklift Academy',
+    issuer_name: 'Warehouse Pro Training',
     issuer_logo_url: null,
     issued_at: '2024-11-24T00:00:00.000Z',
     expires_at: '2026-11-24T00:00:00.000Z',
-    status: 'unverified',
+    status: 'processing',
+    category: 'Heavy Machinery',
+    colorTheme: 'slate',
+    licence_id: 'FLT-78234',
+    rto_code: 'RTO 41003',
     units: [{ code: 'TLILIC0003', title: 'Licence to operate a forklift truck' }],
+    evidence: [],
+  },
+  {
+    id: 'local_20250101_03',
+    title: 'First Aid / CPR',
+    issuer_name: 'Australian Red Cross',
+    issuer_logo_url: null,
+    issued_at: '2023-10-23T00:00:00.000Z',
+    expires_at: '2024-10-23T00:00:00.000Z',
+    status: 'expired',
+    category: 'Healthcare',
+    colorTheme: 'rose',
+    licence_id: 'FA-2023-4521',
+    rto_code: 'RTO 3067',
+    units: [{ code: 'HLTAID011', title: 'Provide first aid' }],
     evidence: [],
   },
 ];
@@ -137,4 +160,61 @@ test('credential detail visual regression', async ({ page }) => {
   await page.locator('[data-testid="credential-detail-root"]:visible').first().waitFor();
   await page.locator('[data-testid="credential-detail-content"]:visible').first().waitFor({ state: 'attached' });
   await expect(page).toHaveScreenshot('credential-detail.png');
+});
+
+test('history screen visual regression', async ({ page }) => {
+  await page.goto('/history');
+  // Wait for the page to load
+  await page.waitForLoadState('networkidle');
+  // Wait a bit for animations to settle
+  await page.waitForTimeout(500);
+  await expect(page).toHaveScreenshot('history.png');
+});
+
+test('history screen with expired filter', async ({ page }) => {
+  await page.goto('/history');
+  await page.waitForLoadState('networkidle');
+
+  // Click on Expired filter chip
+  const expiredChip = page.getByRole('button', { name: 'Expired' });
+  await expiredChip.click();
+  await page.waitForTimeout(300);
+
+  await expect(page).toHaveScreenshot('history-expired.png');
+});
+
+test('profile screen visual regression', async ({ page }) => {
+  await page.goto('/profile');
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(500);
+  await expect(page).toHaveScreenshot('profile.png');
+});
+
+test('bottom navigation is visible on all screens', async ({ page }) => {
+  // Check wallet tab
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  const walletTab = page.getByRole('button', { name: /wallet/i }).first();
+  await expect(walletTab).toBeVisible();
+
+  // Check history tab
+  await page.goto('/history');
+  await page.waitForLoadState('networkidle');
+  const historyTab = page.getByRole('button', { name: /history/i }).first();
+  await expect(historyTab).toBeVisible();
+
+  // Check profile tab
+  await page.goto('/profile');
+  await page.waitForLoadState('networkidle');
+  const profileTab = page.getByRole('button', { name: /profile/i }).first();
+  await expect(profileTab).toBeVisible();
+});
+
+test('central AI button is visible', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  // Check for the AI assistant button
+  const aiButton = page.getByRole('button', { name: /ai assistant/i });
+  await expect(aiButton).toBeVisible();
 });
