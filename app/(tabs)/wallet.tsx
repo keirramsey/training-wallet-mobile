@@ -96,6 +96,17 @@ function normalizeApiError(err: unknown): { message: string; httpStatus?: number
   return { message, httpStatus };
 }
 
+function parseCredentials(payload: unknown): Credential[] {
+  if (Array.isArray(payload)) return payload as Credential[];
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Unexpected /api/credentials response');
+  }
+  const anyPayload = payload as { ok?: unknown; items?: unknown };
+  if (anyPayload.ok !== true) throw new Error('Unexpected /api/credentials response');
+  if (!Array.isArray(anyPayload.items)) throw new Error('Unexpected /api/credentials response');
+  return anyPayload.items as Credential[];
+}
+
 export default function WalletScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -117,14 +128,19 @@ export default function WalletScreen() {
 
       const [local, apiResult] = await Promise.allSettled([
         getLocalCredentials(),
-        apiFetch<Credential[]>('/api/credentials'),
+        apiFetch('/api/credentials'),
       ]);
 
       const localItems = local.status === 'fulfilled' ? local.value : [];
       let apiItems: Credential[] = [];
 
       if (apiResult.status === 'fulfilled') {
-        apiItems = apiResult.value;
+        try {
+          apiItems = parseCredentials(apiResult.value);
+        } catch (apiErr) {
+          console.log('[WalletScreen] API load failed:', apiErr);
+          setError(normalizeApiError(apiErr));
+        }
       } else {
         const apiErr = apiResult.reason;
         console.log('[WalletScreen] API load failed:', apiErr);
