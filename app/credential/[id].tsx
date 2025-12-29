@@ -11,17 +11,17 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CredentialCard } from '@/components/CredentialCard';
 import { apiFetch } from '@/src/lib/api';
-import { inferStatus } from '@/src/data/demoCredentials';
+import { inferColorTheme, inferStatus, DEMO_CREDENTIALS } from '@/src/data/demoCredentials';
 import { getLocalCredential } from '@/src/storage/credentialsStore';
-import { colors, fontSizes, layout, radii, shadows, spacing, statusColors } from '@/src/theme/tokens';
+import { cardThemes, colors, fontSizes, layout, radii, shadows, spacing } from '@/src/theme/tokens';
 import type { Credential } from '@/src/types/credential';
 
 function normalizeApiError(err: unknown): { message: string; httpStatus?: number } {
@@ -35,38 +35,11 @@ function normalizeApiError(err: unknown): { message: string; httpStatus?: number
   return { message: `Request failed: ${rawMessage}`, httpStatus };
 }
 
-function formatDate(iso: string | undefined): string {
+function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
-}
-
-function getStatusDisplay(status: string | undefined) {
-  const normalizedStatus = status || 'unverified';
-  const config = statusColors[normalizedStatus as keyof typeof statusColors] || statusColors.unverified;
-
-  const labels: Record<string, string> = {
-    verified: 'Verified',
-    validated: 'Verified',
-    expired: 'Expired',
-    processing: 'Processing',
-    unverified: 'Unverified',
-  };
-
-  const icons: Record<string, 'check-circle' | 'times-circle' | 'clock' | 'exclamation-circle'> = {
-    verified: 'check-circle',
-    validated: 'check-circle',
-    expired: 'times-circle',
-    processing: 'clock',
-    unverified: 'exclamation-circle',
-  };
-
-  return {
-    ...config,
-    label: labels[normalizedStatus] || 'Unknown',
-    iconName: icons[normalizedStatus] || 'question-circle',
-  };
+  return date.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function parseCredentialDetailResponse(payload: unknown): Credential {
@@ -80,13 +53,6 @@ function parseCredentialDetailResponse(payload: unknown): Credential {
   if (!anyPayload.item || typeof anyPayload.item !== 'object') {
     throw new Error('Unexpected /api/credentials/:id response: expected item object');
   }
-
-  const anyItem = anyPayload.item as { id?: unknown; title?: unknown; issuer_name?: unknown; issued_at?: unknown };
-  if (typeof anyItem.id !== 'string') throw new Error('Unexpected credential: missing id');
-  if (typeof anyItem.title !== 'string') throw new Error('Unexpected credential: missing title');
-  if (typeof anyItem.issuer_name !== 'string') throw new Error('Unexpected credential: missing issuer_name');
-  if (typeof anyItem.issued_at !== 'string') throw new Error('Unexpected credential: missing issued_at');
-
   return anyPayload.item as Credential;
 }
 
@@ -105,8 +71,11 @@ export default function CredentialDetailScreen() {
     setLoading(true);
     setError(null);
     try {
-      if (id.startsWith('local_')) {
-        const local = await getLocalCredential(id);
+      if (id.startsWith('local_') || id.startsWith('demo_')) {
+        let local = await getLocalCredential(id);
+        if (!local) {
+          local = DEMO_CREDENTIALS.find(c => c.id === id) || null;
+        }
         if (!local) {
           setCredential(null);
           setError({ message: 'Not found', httpStatus: 404 });
@@ -139,752 +108,535 @@ export default function CredentialDetailScreen() {
     void load();
   }, [id, load]);
 
-  const onVerify = useCallback(async () => {
-    if (!credential) return;
-    if (credential.id.startsWith('local_')) {
-      Alert.alert('Not verified yet', 'This credential is not issuer-verified yet.');
-      return;
-    }
-    await Linking.openURL(`https://searchtraining.com.au/verify?id=${encodeURIComponent(credential.id)}`);
-  }, [credential]);
-
-  const onShare = useCallback(() => {
-    if (!credential) return;
-    router.push({ pathname: '/share', params: { preselect: credential.id } });
-  }, [credential, router]);
-
-  const onDownload = useCallback(() => {
-    Alert.alert('Coming soon', 'Download Statement of Attainment will be available in a future update.');
-  }, []);
-
-  const onMenu = useCallback(() => {
-    Alert.alert('Coming soon', 'More actions will be available in a future update.');
-  }, []);
-
-  const onAddToWallet = useCallback(() => {
-    Alert.alert('Coming soon', 'Wallet integrations will be available in a future update.');
-  }, []);
-
-  const onManageLink = useCallback(async (path: string) => {
-    await Linking.openURL(path);
-  }, []);
-
-  const goBack = useCallback(() => {
-    router.back();
-  }, [router]);
+  const goBack = useCallback(() => router.back(), [router]);
 
   if (loading) {
     return (
-      <SafeAreaView testID="credential-detail-root" style={styles.safe}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator />
-          <Text style={styles.loadingText}>Loading credential…</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={colors.brand.blue} />
+      </View>
     );
   }
 
   if (error || !credential) {
-    const message =
-      error?.httpStatus === 404 ? 'Not found' : error?.message ?? 'Request failed';
     return (
-      <SafeAreaView testID="credential-detail-root" style={styles.safe}>
-        <ScrollView
-          testID="credential-detail-content"
-          contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}
-        >
-          <View style={styles.topNav}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              onPress={goBack}
-              style={({ pressed }) => [styles.navIcon, pressed ? styles.navIconPressed : null]}
-            >
-              <FontAwesome name="chevron-left" size={16} color={colors.text.primary} />
-            </Pressable>
-            <Text style={styles.navTitle}>Ticket Details</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="More"
-              onPress={onMenu}
-              style={({ pressed }) => [styles.navIcon, pressed ? styles.navIconPressed : null]}
-            >
-              <FontAwesome name="ellipsis-v" size={16} color={colors.text.primary} />
-            </Pressable>
-          </View>
-
-          <View style={[styles.panel, styles.errorPanel]}>
-            <Text style={styles.panelTitle}>Couldn’t load ticket</Text>
-            <Text style={styles.panelBody}>{message}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={load}
-              style={({ pressed }) => [styles.primaryButton, pressed ? styles.buttonPressed : null]}
-            >
-              <Text style={styles.primaryButtonText}>Retry</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.header}>
+          <Pressable onPress={goBack} style={styles.backButton}>
+            <FontAwesome5 name="arrow-left" size={18} color={colors.text.primary} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Error</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error?.message || 'Could not load ticket'}</Text>
+          <Pressable onPress={load} style={styles.retryButton}>
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
 
-  const units = Array.isArray(credential.units) ? credential.units : [];
-  const evidence = Array.isArray(credential.evidence) ? credential.evidence : [];
-  const effectiveStatus = inferStatus(credential);
-  const statusDisplay = getStatusDisplay(effectiveStatus);
-  const issuedAt = formatDate(credential.issued_at);
-  const expiresAt = credential.expires_at ? formatDate(credential.expires_at) : 'Never';
+  const themeKey = credential.colorTheme || inferColorTheme(credential) || 'cyan';
+  const theme = cardThemes[themeKey] || cardThemes.cyan;
+  const status = inferStatus(credential);
+  const units = credential.units || [];
 
   return (
-    <SafeAreaView testID="credential-detail-root" style={styles.safe}>
-      <ScrollView
-        testID="credential-detail-content"
-        contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}
-      >
-        <View style={styles.topNav}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={goBack}
-            style={({ pressed }) => [styles.navIcon, pressed ? styles.navIconPressed : null]}
+    <View style={styles.root}>
+      <StatusBar barStyle="dark-content" />
+      
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable onPress={goBack} style={styles.headerButton}>
+          <FontAwesome5 name="arrow-left" size={18} color={colors.text.primary} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Ticket Details</Text>
+        <Pressable style={styles.headerButton} onPress={() => Alert.alert('Options')}>
+          <FontAwesome5 name="ellipsis-v" size={18} color={colors.text.primary} />
+        </Pressable>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Main Ticket Card */}
+        <View style={styles.ticketCard}>
+          <LinearGradient
+            colors={[theme.from, theme.to]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.cardGradient}
           >
-            <FontAwesome name="chevron-left" size={16} color={colors.text.primary} />
-          </Pressable>
-          <Text style={styles.navTitle}>Ticket Details</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="More"
-            onPress={onMenu}
-            style={({ pressed }) => [styles.navIcon, pressed ? styles.navIconPressed : null]}
-          >
-            <FontAwesome name="ellipsis-v" size={16} color={colors.text.primary} />
-          </Pressable>
-        </View>
-
-        <View style={styles.cardWrap}>
-          <CredentialCard credential={credential} />
-        </View>
-
-        {/* Issuer Info Section */}
-        <View style={styles.issuerSection}>
-          <View style={styles.issuerLeft}>
-            <View style={styles.issuerLogoContainer}>
-              {credential.issuer_logo_url ? (
-                <Image
-                  source={{ uri: credential.issuer_logo_url }}
-                  style={styles.issuerLogo}
-                  resizeMode="contain"
-                />
-              ) : (
-                <FontAwesome5 name="building" size={20} color={colors.brand.blue} />
-              )}
-            </View>
-            <View style={styles.issuerDetails}>
-              <Text style={styles.issuerName}>{credential.issuer_name}</Text>
-              {credential.rto_code && (
-                <Text style={styles.rtoCode}>RTO: {credential.rto_code}</Text>
-              )}
-            </View>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusDisplay.bg, borderColor: statusDisplay.border }]}>
-            <FontAwesome5 name={statusDisplay.iconName} size={12} color={statusDisplay.text} solid />
-            <Text style={[styles.statusBadgeText, { color: statusDisplay.text }]}>{statusDisplay.label}</Text>
-          </View>
-        </View>
-
-        {/* Dates Grid */}
-        <View style={styles.datesPanel}>
-          <View style={styles.dateItem}>
-            <View style={styles.dateIconContainer}>
-              <FontAwesome5 name="calendar-check" size={16} color={colors.brand.blue} />
-            </View>
-            <View>
-              <Text style={styles.dateLabel}>Issue Date</Text>
-              <Text style={styles.dateValue}>{issuedAt}</Text>
-            </View>
-          </View>
-          <View style={styles.dateDivider} />
-          <View style={styles.dateItem}>
-            <View style={styles.dateIconContainer}>
-              <FontAwesome5 name="calendar-times" size={16} color={effectiveStatus === 'expired' ? colors.danger : colors.brand.blue} />
-            </View>
-            <View>
-              <Text style={styles.dateLabel}>Expires</Text>
-              <Text style={[styles.dateValue, effectiveStatus === 'expired' && styles.dateValueExpired]}>{expiresAt}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Licence ID */}
-        {credential.licence_id && (
-          <View style={styles.licencePanel}>
-            <Text style={styles.licenceLabel}>Licence / Certificate ID</Text>
-            <View style={styles.licenceRow}>
-              <Text style={styles.licenceValue}>{credential.licence_id}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Copy licence ID"
-                onPress={() => Alert.alert('Copied', 'Licence ID copied to clipboard')}
-                style={({ pressed }) => [styles.copyButton, pressed && styles.buttonPressed]}
-              >
-                <FontAwesome5 name="copy" size={14} color={colors.brand.blue} />
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Units of competency</Text>
-          {units.length === 0 ? (
-            <Text style={styles.panelBody}>No units listed yet.</Text>
-          ) : (
-            <View style={styles.unitList}>
-              {units.map((unit, index) => (
-                <View key={`${unit.code}-${index}`} style={styles.unitRow}>
-                  <View style={styles.unitDot} />
-                  <View style={styles.unitText}>
-                    <Text style={styles.unitCode}>{unit.code}</Text>
-                    <Text style={styles.unitTitle} numberOfLines={2}>
-                      {unit.title || 'Unit'}
-                    </Text>
-                  </View>
+            {/* Top Row: Issuer & Status */}
+            <View style={styles.cardHeader}>
+              <View style={styles.issuerRow}>
+                <View style={styles.issuerLogoWrap}>
+                  {credential.issuer_logo_url ? (
+                    <Image source={{ uri: credential.issuer_logo_url }} style={styles.issuerLogo} />
+                  ) : (
+                    <Text style={styles.issuerInitial}>{credential.issuer_name?.charAt(0)}</Text>
+                  )}
                 </View>
-              ))}
-            </View>
-          )}
-        </View>
+                <View>
+                  <Text style={styles.issuerName}>{credential.issuer_name}</Text>
+                  {credential.rto_code && (
+                    <View style={styles.rtoRow}>
+                      <FontAwesome5 name="check-circle" size={10} color="#BFDBFE" solid />
+                      <Text style={styles.rtoText}>{credential.rto_code}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
 
-        <View style={styles.qrPanel}>
-          <View style={styles.qrLeft}>
-            <Text style={styles.qrTitle}>Validate this ticket</Text>
-            <Text style={styles.qrBody}>
-              Scan the QR code or tap Verify to check this credential on Search Training.
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onVerify}
-              style={({ pressed }) => [styles.qrButton, pressed ? styles.buttonPressed : null]}
+              <View style={styles.verifiedBadge}>
+                <FontAwesome5 name="check-circle" size={12} color="#6EE7B7" solid />
+                <Text style={styles.verifiedText}>VERIFIED</Text>
+              </View>
+            </View>
+
+            {/* Title Section */}
+            <View style={styles.titleSection}>
+              <Text style={styles.categoryLabel}>{credential.category || 'Credential'}</Text>
+              <Text style={styles.credentialTitle}>{credential.title}</Text>
+              <Text style={styles.credentialCode}>{credential.licence_id || credential.id}</Text>
+            </View>
+
+            {/* Dates Row */}
+            <View style={styles.datesRow}>
+              <View style={styles.dateCol}>
+                <Text style={styles.dateLabel}>Issue Date</Text>
+                <Text style={styles.dateValue}>{formatDate(credential.issued_at)}</Text>
+              </View>
+              <View style={styles.dateDivider} />
+              <View style={styles.dateCol}>
+                <Text style={styles.dateLabel}>Expires</Text>
+                <Text style={[styles.dateValue, { color: '#6EE7B7' }]}>
+                  {formatDate(credential.expires_at)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Units Section */}
+            <View style={styles.unitsSection}>
+              <Text style={styles.unitsHeader}>Units of Competency</Text>
+              <View style={styles.unitsList}>
+                {units.length > 0 ? units.map((u, i) => (
+                  <View key={i} style={styles.unitRow}>
+                    <FontAwesome5 name="check-circle" size={16} color="#6EE7B7" solid />
+                    <View style={styles.unitInfo}>
+                      <Text style={styles.unitCode}>{u.code}</Text>
+                      <Text style={styles.unitTitle}>{u.title}</Text>
+                    </View>
+                  </View>
+                )) : (
+                  <Text style={styles.noUnits}>No units listed</Text>
+                )}
+              </View>
+            </View>
+
+            {/* Validation Footer */}
+            <Pressable 
+              style={styles.validationFooter}
+              onPress={() => Linking.openURL('https://searchtraining.com.au/verify')}
             >
-              <Text style={styles.qrButtonText}>Verify</Text>
+              <View>
+                <View style={styles.validateRow}>
+                  <Text style={styles.validateText}>Tap to validate authenticity</Text>
+                  <FontAwesome5 name="external-link-alt" size={12} color="#BFDBFE" />
+                </View>
+                <Text style={styles.cryptoText}>This credential is cryptographically signed.</Text>
+              </View>
+              <View style={styles.qrIconWrap}>
+                <FontAwesome name="qrcode" size={24} color="#0F172A" />
+              </View>
             </Pressable>
-          </View>
-          <View style={styles.qrSquare}>
-            <FontAwesome name="qrcode" size={28} color={colors.brand.blueDeep} />
-          </View>
+          </LinearGradient>
         </View>
 
-        {evidence.length > 0 && (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Evidence</Text>
-            <Text style={styles.panelBody}>Attached certificate images stored on this device.</Text>
-            <View style={styles.evidenceRow}>
-              {evidence.slice(0, 3).map((e, index) => (
-                <Image key={`${e.uri}-${index}`} source={{ uri: e.uri }} style={styles.evidenceThumb} />
-              ))}
-            </View>
-          </View>
-        )}
-
+        {/* Action Buttons */}
         <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onDownload}
-            style={({ pressed }) => [styles.primaryButton, pressed ? styles.buttonPressed : null]}
-          >
-            <View style={styles.actionRow}>
-              <FontAwesome name="download" size={18} color={colors.text.inverse} />
-              <Text style={styles.primaryButtonText}>Download Statement of Attainment</Text>
-            </View>
+          <Pressable style={styles.downloadButton}>
+            <FontAwesome5 name="file-pdf" size={18} color="#FFF" />
+            <Text style={styles.downloadText}>Download Statement</Text>
           </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={onShare}
-            style={({ pressed }) => [styles.secondaryButton, pressed ? styles.buttonPressed : null]}
+          
+          <Pressable 
+            style={styles.shareButton}
+            onPress={() => router.push({ pathname: '/share', params: { preselect: credential.id } })}
           >
-            <View style={styles.actionRow}>
-              <FontAwesome name="share-alt" size={18} color={colors.text.primary} />
-              <Text style={styles.secondaryButtonText}>Share training</Text>
-            </View>
-          </Pressable>
-
-          <View style={styles.walletRow}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onAddToWallet}
-              style={({ pressed }) => [styles.walletButton, pressed ? styles.buttonPressed : null]}
-            >
-              <FontAwesome name="apple" size={16} color={colors.text.inverse} />
-              <Text style={styles.walletButtonText}>Apple Wallet</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onAddToWallet}
-              style={({ pressed }) => [styles.walletButton, styles.walletButtonLight, pressed ? styles.buttonPressed : null]}
-            >
-              <FontAwesome name="google" size={16} color={colors.text.primary} />
-              <Text style={[styles.walletButtonText, styles.walletButtonTextLight]}>Google Pay</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.panel}>
-          <Text style={styles.manageTitle}>Manage credential</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onManageLink('https://searchtraining.com.au')}
-            style={({ pressed }) => [styles.manageRow, pressed ? styles.manageRowPressed : null]}
-          >
-            <View style={styles.manageLeft}>
-              <View style={styles.manageIcon}>
-                <FontAwesome name="search" size={14} color={colors.brand.blueDeep} />
-              </View>
-              <Text style={styles.manageText}>Search for more training</Text>
-            </View>
-            <FontAwesome name="angle-right" size={18} color={colors.text.muted} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onManageLink('https://searchtraining.com.au')}
-            style={({ pressed }) => [styles.manageRow, pressed ? styles.manageRowPressed : null]}
-          >
-            <View style={styles.manageLeft}>
-              <View style={styles.manageIcon}>
-                <FontAwesome name="refresh" size={14} color={colors.brand.blueDeep} />
-              </View>
-              <Text style={styles.manageText}>Renew training</Text>
-            </View>
-            <FontAwesome name="angle-right" size={18} color={colors.text.muted} />
+            <FontAwesome5 name="share-alt" size={18} color={colors.text.secondary} />
+            <Text style={styles.shareText}>Share training</Text>
           </Pressable>
         </View>
 
-        <Text style={styles.footerNote}>Last updated from National Registry (demo)</Text>
+        {/* Wallet Buttons */}
+        <View style={styles.walletRow}>
+          <Pressable style={styles.walletBtnDark}>
+            <FontAwesome5 name="wallet" size={20} color="#FFF" />
+            <View>
+              <Text style={styles.walletLabel}>ADD TO</Text>
+              <Text style={styles.walletValue}>Apple Wallet</Text>
+            </View>
+          </Pressable>
+          <Pressable style={styles.walletBtnLight}>
+            <FontAwesome5 name="google-wallet" size={20} color="#2563EB" />
+            <View>
+              <Text style={styles.walletLabel}>SAVE TO</Text>
+              <Text style={[styles.walletValue, { color: colors.text.primary }]}>Google Pay</Text>
+            </View>
+          </Pressable>
+        </View>
+
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  root: {
     flex: 1,
     backgroundColor: colors.bg.app,
   },
-  container: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    width: '100%',
-    maxWidth: layout.maxWidth,
-    alignSelf: 'center',
-    gap: spacing.md,
+  loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  topNav: {
+  safe: {
+    flex: 1,
+  },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.bg.app,
+    zIndex: 10,
   },
-  navTitle: {
-    color: colors.text.primary,
-    fontSize: fontSizes.lg,
-    fontWeight: '900',
-  },
-  navIcon: {
+  headerButton: {
     width: 40,
     height: 40,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bg.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.soft,
+    backgroundColor: 'rgba(0,0,0,0.05)',
   },
-  navIconPressed: {
-    opacity: 0.9,
+  backButton: {
+    padding: 10,
   },
-  cardWrap: {
-    width: '100%',
-    maxWidth: layout.cardMaxWidth,
-    alignSelf: 'center',
-  },
-  // Issuer Section
-  issuerSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.bg.surface,
-    borderRadius: radii.xl,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.soft,
-  },
-  issuerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flex: 1,
-  },
-  issuerLogoContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.md,
-    backgroundColor: colors.bg.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  issuerLogo: {
-    width: 32,
-    height: 32,
-  },
-  issuerDetails: {
-    flex: 1,
-    gap: 2,
-  },
-  issuerName: {
-    fontSize: fontSizes.md,
-    fontWeight: '800',
+  headerTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
     color: colors.text.primary,
   },
-  rtoCode: {
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-    color: colors.text.muted,
-    fontFamily: 'SpaceMono',
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
   },
-  statusBadge: {
+  errorText: {
+    fontSize: 16,
+    color: colors.text.secondary,
+    marginBottom: 20,
+  },
+  retryButton: {
+    padding: 12,
+    backgroundColor: colors.brand.blue,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 40,
+  },
+  
+  // Ticket Card
+  ticketCard: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    ...shadows.card,
+    marginBottom: spacing.lg,
+  },
+  cardGradient: {
+    padding: spacing.xl,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.lg,
+  },
+  issuerRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  issuerLogoWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    padding: 2,
+  },
+  issuerLogo: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+  },
+  issuerInitial: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.brand.blue,
+  },
+  issuerName: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  rtoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  rtoText: {
+    color: '#BFDBFE',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: radii.pill,
+    borderRadius: 20,
     borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
-  statusBadgeText: {
-    fontSize: fontSizes.xs,
+  verifiedText: {
+    color: '#D1FAE5',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  
+  titleSection: {
+    marginBottom: spacing.lg,
+  },
+  categoryLabel: {
+    color: '#BFDBFE',
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 6,
   },
-  // Dates Panel
-  datesPanel: {
+  credentialTitle: {
+    color: '#FFF',
+    fontSize: 26,
+    fontWeight: '800',
+    lineHeight: 30,
+    marginBottom: 4,
+  },
+  credentialCode: {
+    color: '#EFF6FF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+
+  datesRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bg.surface,
-    borderRadius: radii.xl,
-    padding: spacing.md,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.soft,
+    borderColor: 'rgba(255,255,255,0.1)',
+    padding: spacing.md,
+    marginBottom: spacing.lg,
   },
-  dateItem: {
+  dateCol: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  dateIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.md,
-    backgroundColor: 'rgba(43, 201, 244, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   dateLabel: {
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-    color: colors.text.muted,
+    color: '#BFDBFE',
+    fontSize: 10,
+    fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
   },
   dateValue: {
-    fontSize: fontSizes.md,
-    fontWeight: '800',
-    color: colors.text.primary,
-  },
-  dateValueExpired: {
-    color: colors.danger,
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   dateDivider: {
     width: 1,
-    height: 40,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginHorizontal: spacing.md,
   },
-  // Licence Panel
-  licencePanel: {
-    backgroundColor: colors.bg.surface,
-    borderRadius: radii.xl,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.soft,
+
+  unitsSection: {
+    marginBottom: spacing.md,
   },
-  licenceLabel: {
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-    color: colors.text.muted,
+  unitsHeader: {
+    color: '#BFDBFE',
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    marginBottom: spacing.xs,
-  },
-  licenceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  licenceValue: {
-    fontSize: fontSizes.lg,
-    fontWeight: '800',
-    color: colors.text.primary,
-    fontFamily: 'SpaceMono',
     letterSpacing: 1,
+    marginBottom: spacing.sm,
+    paddingLeft: 4,
   },
-  copyButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.md,
-    backgroundColor: 'rgba(43, 201, 244, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    padding: 16,
-  },
-  loadingText: {
-    color: colors.text.secondary,
-    fontWeight: '600',
-  },
-  panel: {
-    borderRadius: radii.xl,
-    padding: spacing.lg,
-    backgroundColor: colors.bg.surface,
+  unitsList: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.sm,
-    ...shadows.soft,
-  },
-  errorPanel: {
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FEF2F2',
-  },
-  panelTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '900',
-    color: colors.text.primary,
-  },
-  panelBody: {
-    color: '#374151',
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  unitList: {
-    gap: spacing.sm,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
   },
   unitRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.sm,
+    gap: 12,
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  unitDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    marginTop: 4,
-    backgroundColor: 'rgba(14,137,186,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(14,137,186,0.45)',
-  },
-  unitText: {
+  unitInfo: {
     flex: 1,
     gap: 2,
   },
   unitCode: {
-    color: colors.text.primary,
-    fontFamily: 'SpaceMono',
-    fontSize: fontSizes.xs,
-    fontWeight: '900',
+    color: '#BFDBFE',
+    fontSize: 11,
+    fontWeight: '800',
   },
   unitTitle: {
-    color: colors.text.secondary,
-    fontWeight: '700',
-    fontSize: fontSizes.sm,
-  },
-  qrPanel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    borderRadius: radii.xl,
-    padding: spacing.lg,
-    backgroundColor: colors.bg.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.soft,
-  },
-  qrLeft: {
-    flex: 1,
-    gap: 6,
-  },
-  qrTitle: {
-    color: colors.text.primary,
-    fontWeight: '900',
-    fontSize: fontSizes.md,
-  },
-  qrBody: {
-    color: colors.text.secondary,
+    color: '#FFF',
+    fontSize: 13,
     fontWeight: '600',
-    lineHeight: 20,
+    lineHeight: 18,
   },
-  qrSquare: {
-    width: 74,
-    height: 74,
-    borderRadius: radii.xl,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    alignItems: 'center',
-    justifyContent: 'center',
+  noUnits: {
+    color: '#BFDBFE',
+    padding: spacing.md,
+    fontStyle: 'italic',
+    fontSize: 13,
   },
-  qrButton: {
-    alignSelf: 'flex-start',
-    marginTop: 6,
-    backgroundColor: colors.brand.blue,
-    borderRadius: radii.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  qrButtonText: {
-    color: colors.text.inverse,
-    fontWeight: '900',
-  },
-  evidenceRow: {
+
+  validationFooter: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    borderStyle: 'dashed', // Note: dashed not fully supported on View border, often solid on native
   },
-  evidenceThumb: {
-    width: 104,
-    height: 104,
-    borderRadius: 14,
-    backgroundColor: '#E5E7EB',
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-  actionRow: {
+  validateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
-  buttonPressed: {
-    opacity: 0.92,
-  },
-  primaryButton: {
-    borderRadius: radii.lg,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    backgroundColor: colors.brand.blue,
-  },
-  primaryButtonText: {
-    color: colors.text.inverse,
-    fontWeight: '900',
-  },
-  secondaryButton: {
-    borderRadius: radii.lg,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    backgroundColor: colors.bg.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  secondaryButtonText: {
-    color: colors.text.primary,
-    fontWeight: '900',
-  },
-  walletRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  walletButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    borderRadius: radii.lg,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    backgroundColor: '#0B1220',
-  },
-  walletButtonLight: {
-    backgroundColor: colors.bg.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  walletButtonText: {
-    color: colors.text.inverse,
-    fontWeight: '900',
-  },
-  walletButtonTextLight: {
-    color: colors.text.primary,
-  },
-  manageTitle: {
-    color: colors.text.muted,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontSize: fontSizes.xs,
+    gap: 6,
     marginBottom: 4,
   },
-  manageRow: {
+  validateText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  cryptoText: {
+    color: '#BFDBFE',
+    fontSize: 11,
+  },
+  qrIconWrap: {
+    backgroundColor: '#FFF',
+    padding: 6,
+    borderRadius: 10,
+    ...shadows.soft,
+  },
+
+  // Actions
+  actions: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  downloadButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bg.surfaceMuted,
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: colors.brand.blue,
+    paddingVertical: 16,
+    borderRadius: 14,
+    ...shadows.soft,
+  },
+  downloadText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#FFF',
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  manageRowPressed: {
-    opacity: 0.9,
+  shareText: {
+    color: colors.text.secondary,
+    fontSize: 15,
+    fontWeight: '600',
   },
-  manageLeft: {
+
+  walletRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  walletBtnDark: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    padding: 12,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 12,
+  },
+  walletBtnLight: {
     flex: 1,
-    paddingRight: spacing.sm,
-  },
-  manageIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: radii.md,
-    backgroundColor: '#E0F2FE',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
+    backgroundColor: '#FFF',
+    padding: 12,
+    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  manageText: {
-    color: colors.text.primary,
-    fontWeight: '800',
-    fontSize: fontSizes.sm,
+  walletLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
-  footerNote: {
-    color: colors.text.muted,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: spacing.sm,
+  walletValue: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

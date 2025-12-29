@@ -1,120 +1,301 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
+import { colors, fontSizes, radii, shadows, spacing } from '@/src/theme/tokens';
 
 export default function EnrolmentScreen() {
-  const onOpenSearchTraining = useCallback(async () => {
-    await Linking.openURL('https://searchtraining.com.au');
+  const insets = useSafeAreaInsets();
+  // const router = useRouter();
+
+  const onSave = useCallback(() => {
+    // Save logic
   }, []);
 
   return (
-    <ScreenContainer>
-      <LinearGradient
-        colors={['#2BC9F4', '#0E89BA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
-      >
-        <Text style={styles.heroTitle}>Enrolment</Text>
-        <Text style={styles.heroSubtitle}>Find a course and enrol in minutes.</Text>
-      </LinearGradient>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>My Enrolment Info</Text>
+        <View style={styles.headerSpacer} />
+      </View>
 
-      <View style={styles.panel}>
-        <View style={styles.row}>
-          <View style={styles.icon}>
-            <FontAwesome name="search" size={18} color="#0E89BA" />
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Progress Section */}
+        <View style={styles.progressSection}>
+          <View style={styles.progressLabels}>
+            <Text style={styles.progressLabel}>Compliance Check</Text>
+            <Text style={styles.progressValue}>70%</Text>
           </View>
-          <View style={styles.text}>
-            <Text style={styles.title}>Search courses</Text>
-            <Text style={styles.body}>Browse options without sharing personal info.</Text>
+          <View style={styles.track}>
+            <View style={[styles.fill, { width: '70%' }]} />
           </View>
+          <Text style={styles.progressHint}>Please verify your details for AVETMISS compliance.</Text>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={onOpenSearchTraining}
-          style={({ pressed }) => [styles.primaryButton, pressed ? styles.pressed : null]}
+        <View style={styles.cardsContainer}>
+          {/* Personal Details Card */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardTitleRow}>
+                 <FontAwesome5 name="user" size={16} color={colors.brand.blue} />
+                 <Text style={styles.cardTitle}>Personal Details</Text>
+              </View>
+              <View style={styles.verifiedBadge}>
+                <Text style={styles.verifiedText}>VERIFIED</Text>
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Residential Address</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput 
+                  style={styles.input} 
+                  defaultValue="124 Training Avenue" 
+                  editable={false}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Education History Card */}
+          <View style={styles.card}>
+            <View style={styles.orangeDot} />
+            <View style={styles.cardHeader}>
+              <View style={styles.cardTitleRow}>
+                 <FontAwesome5 name="graduation-cap" size={16} color={colors.brand.blue} />
+                 <Text style={styles.cardTitle}>Education History</Text>
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Highest school level</Text>
+              <Pressable style={styles.selectInput}>
+                <Text style={styles.inputText}>Year 12 or equivalent</Text>
+                <FontAwesome name="chevron-down" size={12} color={colors.text.muted} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Fixed Bottom Button */}
+      <View style={styles.bottomBar}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        <Pressable 
+          onPress={onSave}
+          style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
         >
-          <Text style={styles.primaryButtonText}>Open Search Training</Text>
+          <Text style={styles.saveButtonText}>Save & Confirm</Text>
+          <FontAwesome name="check-circle" size={16} color={colors.text.inverse} />
         </Pressable>
       </View>
-    </ScreenContainer>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    borderRadius: 20,
-    padding: 18,
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg.app,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.bg.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  scrollContent: {
+    paddingTop: spacing.md,
+  },
+  
+  // Progress
+  progressSection: {
+    padding: spacing.xl,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressLabel: {
+    fontSize: fontSizes.sm,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  progressValue: {
+    fontSize: fontSizes.sm,
+    fontWeight: '800',
+    color: colors.brand.blue,
+  },
+  track: {
+    height: 8,
+    backgroundColor: colors.border,
+    borderRadius: 4,
     overflow: 'hidden',
   },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '900',
+  fill: {
+    height: '100%',
+    backgroundColor: colors.brand.blue,
+    borderRadius: 4,
   },
-  heroSubtitle: {
-    marginTop: 6,
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
+  progressHint: {
+    fontSize: 11,
+    color: colors.text.muted,
   },
-  panel: {
-    borderRadius: 18,
-    padding: 16,
-    backgroundColor: '#FFFFFF',
+
+  // Cards
+  cardsContainer: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  card: {
+    backgroundColor: colors.bg.surface,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 12,
+    borderColor: colors.border,
+    ...shadows.soft,
+    overflow: 'hidden',
   },
-  row: {
+  cardHeader: {
     flexDirection: 'row',
-    gap: 12,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
   },
-  icon: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    backgroundColor: '#ECFEFF',
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  cardTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  verifiedBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+  },
+  verifiedText: {
+    color: '#15803D',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  orangeDot: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.warning,
+  },
+  
+  // Fields
+  fieldGroup: {
+    gap: 6,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.text.muted,
+  },
+  inputWrapper: {
+    backgroundColor: colors.bg.app,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: '#A5F3FC',
+    borderColor: colors.border,
+  },
+  input: {
+    height: 44,
+    paddingHorizontal: spacing.md,
+    fontSize: fontSizes.sm,
+    color: colors.text.primary,
+  },
+  selectInput: {
+    height: 44,
+    backgroundColor: colors.bg.app,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+  },
+  inputText: {
+    fontSize: fontSizes.sm,
+    color: colors.text.primary,
+  },
+
+  // Bottom Bar
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  saveButton: {
+    backgroundColor: colors.brand.blue,
+    height: 52,
+    borderRadius: radii.lg,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
+    ...shadows.card,
   },
-  text: {
-    flex: 1,
-    gap: 3,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0B1220',
-  },
-  body: {
-    color: '#4B5563',
-    fontWeight: '600',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  primaryButton: {
-    marginTop: 2,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    backgroundColor: '#0E89BA',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
+  saveButtonText: {
+    color: colors.text.inverse,
+    fontWeight: '800',
+    fontSize: fontSizes.md,
   },
   pressed: {
-    opacity: 0.92,
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
   },
 });
-

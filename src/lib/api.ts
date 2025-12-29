@@ -87,7 +87,7 @@ async function readResponseBody(res: Response): Promise<unknown> {
   return text;
 }
 
-export async function apiFetch(path: string, init: ApiFetchInit = {}) {
+export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has('Accept')) headers.set('Accept', 'application/json');
 
@@ -103,7 +103,7 @@ export async function apiFetch(path: string, init: ApiFetchInit = {}) {
   const method = (init.method ?? 'GET').toUpperCase();
   const canAutoRetry = method === 'GET' || method === 'HEAD';
 
-  const attemptFetch = async (attempt: number): Promise<unknown> => {
+  const attemptFetch = async (attempt: number): Promise<T> => {
     const { timeoutMs: _timeoutMs, signal: externalSignal, ...fetchInit } = init;
 
     const controller = new AbortController();
@@ -168,7 +168,7 @@ export async function apiFetch(path: string, init: ApiFetchInit = {}) {
       throw createApiFetchError({ message, status: res.status, url, body });
     }
 
-    return body;
+    return body as T;
   };
 
   return attemptFetch(0);

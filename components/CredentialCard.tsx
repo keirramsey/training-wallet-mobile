@@ -314,7 +314,6 @@ export function CredentialCard({ credential, isActive = true, onActivate, onNavi
               </View>
 
               <Pressable
-                accessibilityRole="button"
                 accessibilityLabel="View QR code"
                 onPress={(event) => {
                   event.stopPropagation?.();
