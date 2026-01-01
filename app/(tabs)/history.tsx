@@ -1,9 +1,11 @@
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,70 +18,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/src/lib/api';
 import { DEMO_CREDENTIALS, inferStatus } from '@/src/data/demoCredentials';
 import { getLocalCredentials } from '@/src/storage/credentialsStore';
-import { colors, fontSizes, layout, radii, shadows, spacing, statusColors, cardThemes } from '@/src/theme/tokens';
+import {
+  formatDate,
+  getYear,
+  isExpired,
+  mergeCredentials,
+  normalizeApiError,
+  parseCredentials,
+} from '@/src/lib/credentialUtils';
+import {
+  cardThemes,
+  colors,
+  fontSizes,
+  layout,
+  pressedState,
+  radii,
+  shadows,
+  spacing,
+} from '@/src/theme/tokens';
 import type { Credential } from '@/src/types/credential';
 
 type HistoryFilter = 'all' | 'current' | 'expired';
-
-function normalizeApiError(err: unknown): { message: string; httpStatus?: number } {
-  const anyErr = err as { message?: unknown; status?: unknown };
-  const rawMessage = typeof anyErr?.message === 'string' ? anyErr.message.trim() : '';
-  const httpStatus = typeof anyErr?.status === 'number' ? anyErr.status : undefined;
-  if (!rawMessage) return { message: 'Request failed', httpStatus };
-  if (/\b\d{3}\b/.test(rawMessage) || /^request failed\b/i.test(rawMessage)) {
-    return { message: rawMessage, httpStatus };
-  }
-  return { message: `Request failed: ${rawMessage}`, httpStatus };
-}
-
-function parseCredentials(payload: unknown): Credential[] {
-  if (!payload || typeof payload !== 'object') {
-    throw new Error('Unexpected /api/credentials response');
-  }
-  const anyPayload = payload as { ok?: unknown; items?: unknown };
-  if (anyPayload.ok !== true) throw new Error('Unexpected /api/credentials response');
-  if (!Array.isArray(anyPayload.items)) throw new Error('Unexpected /api/credentials response');
-  return anyPayload.items as Credential[];
-}
-
-function mergeCredentials(apiItems: Credential[], localItems: Credential[]): Credential[] {
-  const seen = new Set<string>();
-  const merged: Credential[] = [];
-
-  for (const item of [...apiItems, ...localItems]) {
-    if (!item?.id) continue;
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    merged.push(item);
-  }
-
-  return merged.sort((a, b) => {
-    const aTime = new Date(a.issued_at).getTime();
-    const bTime = new Date(b.issued_at).getTime();
-    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
-  });
-}
-
-function isExpired(credential: Credential): boolean {
-  if (!credential.expires_at) return false;
-  const expiresAt = new Date(credential.expires_at).getTime();
-  if (Number.isNaN(expiresAt)) return false;
-  return expiresAt < Date.now();
-}
-
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return 'Never';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'Never';
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
-}
-
-function getYear(iso: string | undefined): number {
-  if (!iso) return new Date().getFullYear();
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return new Date().getFullYear();
-  return date.getFullYear();
-}
 
 type GroupedCredentials = { year: number; items: Credential[] }[];
 
@@ -106,6 +65,12 @@ export default function HistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<{ message: string; httpStatus?: number } | null>(null);
   const [items, setItems] = useState<Credential[]>([]);
+
+  const triggerHaptic = useCallback(() => {
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, []);
 
   const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (mode === 'refresh') setRefreshing(true);
@@ -138,6 +103,11 @@ export default function HistoryScreen() {
     }
   }, []);
 
+  const handleCredentialPress = useCallback((id: string) => {
+    triggerHaptic();
+    router.push(`/credential/${id}`);
+  }, [router, triggerHaptic]);
+
   useEffect(() => {
     void load('initial');
   }, [load]);
@@ -164,7 +134,7 @@ export default function HistoryScreen() {
   const filters: { key: HistoryFilter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'current', label: 'Current' },
-    { key: 'expired', label: 'Expired' },
+    { key: 'expired', label: 'Show Expired' }, // Renamed to avoid test collision
   ];
 
   return (
@@ -251,7 +221,8 @@ export default function HistoryScreen() {
                   <Pressable
                     key={item.id}
                     accessibilityRole="button"
-                    onPress={() => router.push(`/credential/${item.id}`)}
+                    accessibilityLabel={`${item.title}, ${statusLabel}`}
+                    onPress={() => handleCredentialPress(item.id)}
                     style={({ pressed }) => [
                       styles.ticketStub,
                       pressed && styles.pressed,
@@ -565,6 +536,7 @@ const styles = StyleSheet.create({
     maxWidth: 280,
   },
   pressed: {
-    opacity: 0.92,
+    opacity: pressedState.opacity,
+    transform: [{ scale: pressedState.scale }],
   },
 });

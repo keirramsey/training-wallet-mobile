@@ -1,10 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import {
-  Image,
   ImageBackground,
   Pressable,
   ScrollView,
@@ -19,10 +16,9 @@ import { colors, fontSizes, radii, shadows, spacing } from '@/src/theme/tokens';
 
 export default function CoursesScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
 
   const onManageBooking = useCallback(() => {
-    // router.push(...)
+    // TODO: Implement booking management
   }, []);
 
   return (

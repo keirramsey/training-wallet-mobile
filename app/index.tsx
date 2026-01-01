@@ -1,6 +1,7 @@
 import { Redirect } from 'expo-router';
 
 export default function Index() {
-  return <Redirect href="/wallet" />;
+  // TODO: Add auth state check - if logged in, redirect to wallet
+  return <Redirect href="/(auth)/welcome" />;
 }
 

@@ -1,9 +1,7 @@
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
-import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   Alert,
-  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -11,9 +9,13 @@ import {
   Switch,
   Text,
   View,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
+import { useAuth } from '@/src/context/AuthContext';
+import { useThemePreference } from '@/src/context/ThemePreferenceContext';
 import { colors, fontSizes, layout, radii, shadows, spacing } from '@/src/theme/tokens';
 
 type MenuItem = {
@@ -27,10 +29,28 @@ type MenuItem = {
 };
 
 export default function ProfileScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { logout, user } = useAuth();
+  const { preference, setPreference } = useThemePreference();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const stProfileUrl = 'https://searchtraining.com.au/profile';
+
+  const cycleThemePreference = useCallback(() => {
+    const order: Array<typeof preference> = ['system', 'light', 'dark'];
+    const index = order.indexOf(preference);
+    const next = order[(index + 1) % order.length];
+    setPreference(next);
+  }, [preference, setPreference]);
+
+  const openUrl = useCallback(async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unable to open link', url);
+    }
+  }, []);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -38,10 +58,21 @@ export default function ProfileScreen() {
       'Are you sure you want to sign out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: () => {} },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+              // Navigation handled by AuthContext
+            } catch {
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
+          }
+        },
       ]
     );
-  }, []);
+  }, [logout]);
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -62,7 +93,7 @@ export default function ProfileScreen() {
         icon: 'user-edit',
         label: 'Personal Information',
         subtitle: 'Name, email, phone',
-        onPress: () => Alert.alert('Coming Soon', 'Personal information editing will be available soon.'),
+        onPress: () => router.push('/settings/personal'),
         showChevron: true,
       },
       {
@@ -70,7 +101,7 @@ export default function ProfileScreen() {
         icon: 'shield-alt',
         label: 'Security',
         subtitle: 'Password, 2FA',
-        onPress: () => Alert.alert('Coming Soon', 'Security settings will be available soon.'),
+        onPress: () => router.push('/settings/security'),
         showChevron: true,
       },
     ],
@@ -105,6 +136,32 @@ export default function ProfileScreen() {
           />
         ),
       },
+      {
+        id: 'theme',
+        icon: 'moon',
+        label: 'Theme',
+        subtitle: 'System / Light / Dark',
+        onPress: cycleThemePreference,
+        rightElement: (
+          <View style={styles.themeToggle}>
+            {(['system', 'light', 'dark'] as const).map((option) => {
+              const isActive = preference === option;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  onPress={() => setPreference(option)}
+                  style={[styles.themeOption, isActive && styles.themeOptionActive]}
+                >
+                  <Text style={[styles.themeOptionText, isActive && styles.themeOptionTextActive]}>
+                    {option === 'system' ? 'System' : option === 'light' ? 'Light' : 'Dark'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ),
+      },
     ],
     // Support Section
     [
@@ -112,7 +169,7 @@ export default function ProfileScreen() {
         id: 'help',
         icon: 'question-circle',
         label: 'Help & Support',
-        onPress: () => Alert.alert('Help', 'For support, email support@searchtraining.com.au'),
+        onPress: () => openUrl('mailto:support@trainingwallet.com.au'),
         showChevron: true,
       },
       {
@@ -120,14 +177,14 @@ export default function ProfileScreen() {
         icon: 'info-circle',
         label: 'About Training Wallet',
         subtitle: 'Version 1.0.0',
-        onPress: () => Alert.alert('Training Wallet', 'Version 1.0.0\n\nPowered by Search Training'),
+        onPress: () => router.push('/about'),
         showChevron: true,
       },
       {
         id: 'privacy',
         icon: 'file-alt',
         label: 'Privacy Policy',
-        onPress: () => Alert.alert('Coming Soon', 'Privacy policy will be available soon.'),
+        onPress: () => openUrl('https://trainingwallet.com.au/privacy'),
         showChevron: true,
       },
     ],
@@ -153,12 +210,17 @@ export default function ProfileScreen() {
             <View style={styles.avatar}>
               <FontAwesome5 name="user" size={32} color={colors.brand.blue} />
             </View>
-            <Pressable style={styles.editAvatarButton}>
-              <FontAwesome5 name="camera" size={12} color={colors.text.inverse} />
-            </Pressable>
+          <Pressable
+            style={styles.editAvatarButton}
+            accessibilityRole="button"
+            accessibilityLabel="Edit profile photo"
+            onPress={() => openUrl(stProfileUrl)}
+          >
+            <FontAwesome5 name="camera" size={12} color={colors.text.inverse} />
+          </Pressable>
           </View>
-          <Text style={styles.userName}>Training Wallet User</Text>
-          <Text style={styles.userEmail}>user@example.com</Text>
+          <Text style={styles.userName}>{user?.name || 'Training Wallet User'}</Text>
+          <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>6</Text>
@@ -381,6 +443,30 @@ const styles = StyleSheet.create({
   },
   menuContent: {
     flex: 1,
+  },
+  themeToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg.surfaceMuted,
+    borderRadius: radii.pill,
+    padding: 3,
+    gap: 4,
+  },
+  themeOption: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radii.pill,
+  },
+  themeOptionActive: {
+    backgroundColor: colors.bg.surface,
+    ...shadows.soft,
+  },
+  themeOptionText: {
+    fontSize: fontSizes.xs,
+    fontWeight: '700',
+    color: colors.text.muted,
+  },
+  themeOptionTextActive: {
+    color: colors.text.primary,
   },
   menuLabel: {
     fontSize: fontSizes.md,

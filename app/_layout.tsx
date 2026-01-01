@@ -9,7 +9,8 @@ import 'react-native-reanimated';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { ViewStyle } from 'react-native';
 
-import { useColorScheme } from '@/components/useColorScheme';
+import { AuthProvider } from '@/src/context/AuthContext';
+import { ThemePreferenceProvider, useThemePreference } from '@/src/context/ThemePreferenceContext';
 import { API_BASE_URL } from '@/src/lib/api';
 import { colors, shadows } from '@/src/theme/tokens';
 
@@ -19,7 +20,7 @@ export {
 } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: '(auth)',
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -54,23 +55,30 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <ThemePreferenceProvider>
+      <RootLayoutNav />
+    </ThemePreferenceProvider>
+  );
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const { resolvedScheme } = useThemePreference();
   const window = useWindowDimensions();
 
   const content = (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="(modals)" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="credential/[id]" options={{ title: 'Credential' }} />
-        <Stack.Screen name="add/upload" options={{ title: 'Upload' }} />
-        <Stack.Screen name="add/manual" options={{ title: 'Manual entry' }} />
-      </Stack>
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider value={resolvedScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="(modals)" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="credential/[id]" options={{ title: 'Credential' }} />
+          <Stack.Screen name="add/upload" options={{ title: 'Upload' }} />
+          <Stack.Screen name="add/manual" options={{ title: 'Manual entry' }} />
+        </Stack>
+      </ThemeProvider>
+    </AuthProvider>
   );
 
   if (Platform.OS !== 'web') return content;

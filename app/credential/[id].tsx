@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/src/lib/api';
 import { inferColorTheme, inferStatus, DEMO_CREDENTIALS } from '@/src/data/demoCredentials';
 import { getLocalCredential } from '@/src/storage/credentialsStore';
-import { cardThemes, colors, fontSizes, layout, radii, shadows, spacing } from '@/src/theme/tokens';
+import { cardThemes, colors, fontSizes, shadows, spacing } from '@/src/theme/tokens';
 import type { Credential } from '@/src/types/credential';
 
 function normalizeApiError(err: unknown): { message: string; httpStatus?: number } {
@@ -140,11 +140,16 @@ export default function CredentialDetailScreen() {
 
   const themeKey = credential.colorTheme || inferColorTheme(credential) || 'cyan';
   const theme = cardThemes[themeKey] || cardThemes.cyan;
-  const status = inferStatus(credential);
+  const _status = inferStatus(credential); // Available for future use
   const units = credential.units || [];
 
   return (
-    <View style={styles.root}>
+    <View
+      style={styles.root}
+      testID="credential-detail-root"
+      // @ts-expect-error `dataSet` is supported by react-native-web
+      dataSet={{ testid: 'credential-detail-root' }}
+    >
       <StatusBar barStyle="dark-content" />
       
       {/* Header */}
@@ -158,7 +163,12 @@ export default function CredentialDetailScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        testID="credential-detail-content"
+        // @ts-expect-error `dataSet` is supported by react-native-web
+        dataSet={{ testid: 'credential-detail-content' }}
+      >
         {/* Main Ticket Card */}
         <View style={styles.ticketCard}>
           <LinearGradient

@@ -1,8 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -11,24 +10,86 @@ import {
   Text,
   TextInput,
   View,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { colors, fontSizes, radii, shadows, spacing } from '@/src/theme/tokens';
+import { apiFetch } from '@/src/lib/api';
+
+type EnrolmentProfile = {
+  completion: number;
+  address: string;
+  educationLevel: string;
+  verified: boolean;
+};
+
+const DEMO_PROFILE: EnrolmentProfile = {
+  completion: 70,
+  address: '124 Training Avenue',
+  educationLevel: 'Year 12 or equivalent',
+  verified: true,
+};
+
+const ST_PROFILE_URL = 'https://searchtraining.com.au/profile';
 
 export default function EnrolmentScreen() {
   const insets = useSafeAreaInsets();
-  // const router = useRouter();
+  const router = useRouter();
+  const [profile, setProfile] = useState<EnrolmentProfile>(DEMO_PROFILE);
+  const [demoMode, setDemoMode] = useState(false);
 
   const onSave = useCallback(() => {
-    // Save logic
+    Linking.openURL(ST_PROFILE_URL).catch(() => {});
+  }, []);
+
+  const onOpenUpcoming = useCallback(() => {
+    router.push('/(tabs)/upcoming');
+  }, [router]);
+
+  const onOpenSearchTraining = useCallback(() => {
+    Linking.openURL('https://searchtraining.com.au').catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadProfile = async () => {
+      try {
+        setDemoMode(false);
+        const response = await apiFetch<unknown>('/api/enrolment/profile');
+        if (typeof response === 'object' && response) {
+          const anyResponse = response as Partial<EnrolmentProfile>;
+          const resolved: EnrolmentProfile = {
+            completion: typeof anyResponse.completion === 'number' ? anyResponse.completion : DEMO_PROFILE.completion,
+            address: typeof anyResponse.address === 'string' ? anyResponse.address : DEMO_PROFILE.address,
+            educationLevel: typeof anyResponse.educationLevel === 'string' ? anyResponse.educationLevel : DEMO_PROFILE.educationLevel,
+            verified: typeof anyResponse.verified === 'boolean' ? anyResponse.verified : DEMO_PROFILE.verified,
+          };
+          if (isMounted) setProfile(resolved);
+          return;
+        }
+        if (isMounted) {
+          setProfile(DEMO_PROFILE);
+          setDemoMode(true);
+        }
+      } catch {
+        if (isMounted) {
+          setProfile(DEMO_PROFILE);
+          setDemoMode(true);
+        }
+      }
+    };
+    void loadProfile();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>My Enrolment Info</Text>
@@ -39,19 +100,36 @@ export default function EnrolmentScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
+        {demoMode && (
+          <View style={styles.demoBanner}>
+            <Text style={styles.demoBannerText}>Demo mode · showing sample enrolment data</Text>
+          </View>
+        )}
+
         {/* Progress Section */}
         <View style={styles.progressSection}>
           <View style={styles.progressLabels}>
-            <Text style={styles.progressLabel}>Compliance Check</Text>
-            <Text style={styles.progressValue}>70%</Text>
+            <Text style={styles.progressLabel}>Profile Completion</Text>
+            <Text style={styles.progressValue}>{profile.completion}%</Text>
           </View>
           <View style={styles.track}>
-            <View style={[styles.fill, { width: '70%' }]} />
+            <View style={[styles.fill, { width: `${profile.completion}%` }]} />
           </View>
-          <Text style={styles.progressHint}>Please verify your details for AVETMISS compliance.</Text>
+          <Text style={styles.progressHint}>Please verify your details to complete your profile.</Text>
         </View>
 
         <View style={styles.cardsContainer}>
+          <Pressable
+            style={({ pressed }) => [styles.linkCard, pressed && styles.linkCardPressed]}
+            onPress={onOpenUpcoming}
+          >
+            <View>
+              <Text style={styles.linkTitle}>Upcoming courses</Text>
+              <Text style={styles.linkSubtitle}>View your Search Training schedule</Text>
+            </View>
+            <FontAwesome5 name="chevron-right" size={14} color={colors.text.muted} />
+          </Pressable>
+
           {/* Personal Details Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -59,17 +137,19 @@ export default function EnrolmentScreen() {
                  <FontAwesome5 name="user" size={16} color={colors.brand.blue} />
                  <Text style={styles.cardTitle}>Personal Details</Text>
               </View>
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedText}>VERIFIED</Text>
-              </View>
+              {profile.verified && (
+                <View style={styles.verifiedBadge}>
+                  <Text style={styles.verifiedText}>VERIFIED</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Residential Address</Text>
               <View style={styles.inputWrapper}>
-                <TextInput 
-                  style={styles.input} 
-                  defaultValue="124 Training Avenue" 
+                <TextInput
+                  style={styles.input}
+                  value={profile.address}
                   editable={false}
                 />
               </View>
@@ -88,8 +168,8 @@ export default function EnrolmentScreen() {
 
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Highest school level</Text>
-              <Pressable style={styles.selectInput}>
-                <Text style={styles.inputText}>Year 12 or equivalent</Text>
+              <Pressable style={styles.selectInput} onPress={onOpenSearchTraining}>
+                <Text style={styles.inputText}>{profile.educationLevel}</Text>
                 <FontAwesome name="chevron-down" size={12} color={colors.text.muted} />
               </Pressable>
             </View>
@@ -142,6 +222,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: spacing.md,
   },
+  demoBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(14, 137, 186, 0.12)',
+    alignSelf: 'flex-start',
+  },
+  demoBannerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.brand.blue,
+  },
   
   // Progress
   progressSection: {
@@ -184,6 +278,30 @@ const styles = StyleSheet.create({
   cardsContainer: {
     padding: spacing.lg,
     gap: spacing.lg,
+  },
+  linkCard: {
+    backgroundColor: colors.bg.surface,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...shadows.soft,
+  },
+  linkCardPressed: {
+    backgroundColor: colors.bg.surfaceMuted,
+  },
+  linkTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '800',
+    color: colors.text.primary,
+  },
+  linkSubtitle: {
+    fontSize: fontSizes.xs,
+    color: colors.text.muted,
+    marginTop: 4,
   },
   card: {
     backgroundColor: colors.bg.surface,

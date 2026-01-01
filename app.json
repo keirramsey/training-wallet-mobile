@@ -1,33 +1,57 @@
 {
   "expo": {
-    "name": "training-wallet-mobile",
+    "name": "Training Wallet",
     "slug": "training-wallet-mobile",
     "version": "1.0.0",
+    "description": "Securely store, verify, and share your professional training credentials. Training Wallet by Search Training helps you manage your qualifications, track expiring certifications, and easily share verified credentials with employers.",
+    "owner": "searchtraining",
+    "primaryColor": "#2b6cee",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "trainingwalletmobile",
+    "scheme": "trainingwallet",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "githubUrl": "https://github.com/searchtraining/training-wallet-mobile",
+    "privacy": "public",
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.searchtraining.trainingwallet",
       "supportsTablet": true,
+      "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "Training Wallet uses the camera to capture your certificate for your wallet.",
         "NSPhotoLibraryUsageDescription": "Training Wallet uses your photo library to attach a certificate image to a credential.",
-        "NSPhotoLibraryAddUsageDescription": "Training Wallet can save certificate images to your photo library when you choose to."
+        "NSPhotoLibraryAddUsageDescription": "Training Wallet can save certificate images to your photo library when you choose to.",
+        "NSFaceIDUsageDescription": "Training Wallet uses Face ID to securely authenticate you.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": []
       }
     },
     "android": {
+      "package": "com.searchtraining.trainingwallet",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
     },
     "web": {
       "bundler": "metro",

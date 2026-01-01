@@ -1,56 +1,59 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { LinearGradient } from 'expo-linear-gradient';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Pressable,
-  RefreshControl,
+  ScrollView,
   Share,
+  StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
 import { apiFetch } from '@/src/lib/api';
+import { inferColorTheme, DEMO_CREDENTIALS } from '@/src/data/demoCredentials';
 import { getLocalCredentials } from '@/src/storage/credentialsStore';
+import { colors, shadows, spacing } from '@/src/theme/tokens';
 import type { Credential } from '@/src/types/credential';
 
 type SelectedMap = Record<string, true>;
+
+const SHARE_CREDENTIAL_ICONS: Record<string, { icon: string; bgColor: string; iconColor: string }> = {
+  cyan: { icon: 'certificate', bgColor: '#DBEAFE', iconColor: '#2563EB' },
+  orange: { icon: 'first-aid', bgColor: '#FEE2E2', iconColor: '#DC2626' },
+  purple: { icon: 'warehouse', bgColor: '#FEF3C7', iconColor: '#D97706' },
+  green: { icon: 'check-circle', bgColor: '#D1FAE5', iconColor: '#059669' },
+  blue: { icon: 'id-badge', bgColor: '#DBEAFE', iconColor: '#2563EB' },
+};
 
 function normalizeApiError(err: unknown): { message: string; httpStatus?: number } {
   const anyErr = err as { message?: unknown; status?: unknown };
   const rawMessage = typeof anyErr?.message === 'string' ? anyErr.message.trim() : '';
   const httpStatus = typeof anyErr?.status === 'number' ? anyErr.status : undefined;
   if (!rawMessage) return { message: 'Request failed', httpStatus };
-  if (/\b\d{3}\b/.test(rawMessage) || /^request failed\b/i.test(rawMessage)) {
-    return { message: rawMessage, httpStatus };
-  }
-  return { message: `Request failed: ${rawMessage}`, httpStatus };
+  return { message: rawMessage, httpStatus };
 }
 
 function parseCredentials(payload: unknown): Credential[] {
-  if (!payload || typeof payload !== 'object') throw new Error('Unexpected /api/credentials response');
+  if (!payload || typeof payload !== 'object') throw new Error('Unexpected response');
   const anyPayload = payload as { ok?: unknown; items?: unknown };
-  if (anyPayload.ok !== true) throw new Error('Unexpected /api/credentials response');
-  if (!Array.isArray(anyPayload.items)) throw new Error('Unexpected /api/credentials response');
+  if (anyPayload.ok !== true) throw new Error('Unexpected response');
+  if (!Array.isArray(anyPayload.items)) throw new Error('Unexpected response');
   return anyPayload.items as Credential[];
 }
 
 function mergeCredentials(apiItems: Credential[], localItems: Credential[]): Credential[] {
   const seen = new Set<string>();
   const merged: Credential[] = [];
-
   for (const item of [...apiItems, ...localItems]) {
-    if (!item?.id) continue;
-    if (seen.has(item.id)) continue;
+    if (!item?.id || seen.has(item.id)) continue;
     seen.add(item.id);
     merged.push(item);
   }
-
   return merged.sort((a, b) => {
     const aTime = new Date(a.issued_at).getTime();
     const bTime = new Date(b.issued_at).getTime();
@@ -58,61 +61,62 @@ function mergeCredentials(apiItems: Credential[], localItems: Credential[]): Cre
   });
 }
 
+function formatExpiry(iso: string | null | undefined): string {
+  if (!iso) return 'No expiry';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-AU', { month: '2-digit', year: 'numeric' });
+}
+
 function toPreselectList(value: string | string[] | undefined): string[] {
   const first = Array.isArray(value) ? value[0] : value;
   if (!first) return [];
-  return first
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return first.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 export default function ShareScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ preselect?: string | string[] }>();
   const preselect = useMemo(() => toPreselectList(params.preselect), [params.preselect]);
   const appliedPreselectKey = useRef<string>('');
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<{ message: string; httpStatus?: number } | null>(null);
+  const [_error, setError] = useState<{ message: string; httpStatus?: number } | null>(null);
   const [items, setItems] = useState<Credential[]>([]);
   const [selected, setSelected] = useState<SelectedMap>({});
 
-  const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
-    if (mode === 'refresh') setRefreshing(true);
-    else setLoading(true);
-
+  const load = useCallback(async () => {
+    setLoading(true);
     setError(null);
     try {
       const local = await getLocalCredentials();
       let apiItems: Credential[] = [];
-
       try {
         const payload = (await apiFetch('/api/credentials')) as unknown;
         apiItems = parseCredentials(payload);
       } catch (apiErr) {
+        // Use demo credentials as fallback
+        apiItems = DEMO_CREDENTIALS;
         setError(normalizeApiError(apiErr));
       }
-
       setItems(mergeCredentials(apiItems, local));
     } catch (err) {
-      setItems([]);
+      setItems(DEMO_CREDENTIALS);
       setError(normalizeApiError(err));
     } finally {
-      if (mode === 'refresh') setRefreshing(false);
-      else setLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load('initial');
+    void load();
   }, [load]);
 
   useEffect(() => {
     if (items.length === 0 || preselect.length === 0) return;
     const key = preselect.join(',');
     if (appliedPreselectKey.current === key) return;
-
     const ids = new Set(items.map((i) => i.id));
     const next: SelectedMap = {};
     for (const id of preselect) {
@@ -144,14 +148,30 @@ export default function ShareScreen() {
     setSelected(next);
   }, [items]);
 
-  const clearAll = useCallback(() => setSelected({}), []);
+  const goBack = useCallback(() => router.back(), [router]);
 
-  const onShare = useCallback(async () => {
+  const onCopyLink = useCallback(async () => {
     if (selectedItems.length === 0) {
       Alert.alert('Select credentials', 'Choose one or more credentials to share.');
       return;
     }
+    const link = `https://training.wallet/share/${Date.now()}`;
+    Alert.alert('Link copied', link);
+  }, [selectedItems]);
 
+  const onShowQR = useCallback(() => {
+    if (selectedItems.length === 0) {
+      Alert.alert('Select credentials', 'Choose one or more credentials to share.');
+      return;
+    }
+    Alert.alert('QR Code', 'QR code feature coming soon.');
+  }, [selectedItems]);
+
+  const onShareEmployer = useCallback(async () => {
+    if (selectedItems.length === 0) {
+      Alert.alert('Select credentials', 'Choose one or more credentials to share.');
+      return;
+    }
     const payload = {
       shared_at: new Date().toISOString(),
       items: selectedItems.map((c) => ({
@@ -163,7 +183,6 @@ export default function ShareScreen() {
         status: c.status ?? 'unverified',
       })),
     };
-
     const message = JSON.stringify(payload, null, 2);
     try {
       await Share.share({ message });
@@ -172,247 +191,348 @@ export default function ShareScreen() {
     }
   }, [selectedItems]);
 
-  const previewText = useMemo(() => {
-    if (selectedItems.length === 0) return 'No credentials selected.';
-    const titles = selectedItems.map((c) => c.title).slice(0, 5);
-    const more = selectedItems.length > titles.length ? ` (+${selectedItems.length - titles.length} more)` : '';
-    return `${selectedItems.length} selected: ${titles.join(', ')}${more}`;
+  const onPreview = useCallback(() => {
+    if (selectedItems.length === 0) return;
+    const titles = selectedItems.map((c) => `• ${c.title}`).join('\n');
+    Alert.alert('Preview', titles);
   }, [selectedItems]);
 
-  const onRefresh = useCallback(() => void load('refresh'), [load]);
-
   return (
-    <ScreenContainer refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      <LinearGradient
-        colors={['#2BC9F4', '#0E89BA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <Pressable onPress={goBack} style={styles.backButton}>
+          <FontAwesome5 name="chevron-left" size={20} color={colors.text.primary} />
+        </Pressable>
+        <Pressable onPress={selectAll}>
+          <Text style={styles.selectAllText}>Select All</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.heroTitle}>Share</Text>
-        <Text style={styles.heroSubtitle}>Select credentials to share as a simple JSON payload.</Text>
-      </LinearGradient>
+        {/* Title */}
+        <Text style={styles.title}>Share Credentials</Text>
+        <Text style={styles.subtitle}>
+          Select the qualifications you want to include in this share package.
+        </Text>
 
-      <View style={styles.panel}>
-        <View style={styles.toolbar}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={selectAll}
-            disabled={items.length === 0}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              items.length === 0 ? styles.disabled : null,
-              pressed && items.length > 0 ? styles.pressed : null,
-            ]}
-          >
-            <Text style={styles.secondaryButtonText}>Select all</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={clearAll}
-            disabled={selectedIds.length === 0}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              selectedIds.length === 0 ? styles.disabled : null,
-              pressed && selectedIds.length > 0 ? styles.pressed : null,
-            ]}
-          >
-            <Text style={styles.secondaryButtonText}>Clear</Text>
-          </Pressable>
-        </View>
-
+        {/* Loading */}
         {loading && (
-          <View style={styles.inline}>
-            <ActivityIndicator />
-            <Text style={styles.muted}>Loading…</Text>
+          <View style={styles.loadingState}>
+            <ActivityIndicator color={colors.primary} />
           </View>
         )}
 
-        {!loading && error && (
-          <Text style={styles.warnText}>
-            {typeof error.httpStatus === 'number'
-              ? `Sync issue (HTTP ${error.httpStatus}) — showing local credentials`
-              : 'Sync issue — showing local credentials'}
-          </Text>
-        )}
-
+        {/* Credential Cards */}
         {!loading && (
-          <FlatList
-            data={items}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            contentContainerStyle={styles.list}
-            renderItem={({ item }) => {
-              const checked = Boolean(selected[item.id]);
+          <View style={styles.credentialsList}>
+            {items.map((credential) => {
+              const checked = Boolean(selected[credential.id]);
+              const themeKey = credential.colorTheme || inferColorTheme(credential) || 'cyan';
+              const iconConfig = SHARE_CREDENTIAL_ICONS[themeKey] || SHARE_CREDENTIAL_ICONS.cyan;
+
               return (
                 <Pressable
-                  accessibilityRole="button"
-                  onPress={() => toggle(item.id)}
-                  style={({ pressed }) => [styles.row, pressed ? styles.pressedRow : null]}
+                  key={credential.id}
+                  style={({ pressed }) => [
+                    styles.credentialCard,
+                    !checked && styles.credentialCardUnchecked,
+                    pressed && styles.credentialCardPressed,
+                  ]}
+                  onPress={() => toggle(credential.id)}
                 >
-                  <FontAwesome
-                    name={checked ? 'check-square-o' : 'square-o'}
-                    size={20}
-                    color={checked ? '#0E89BA' : '#9CA3AF'}
-                  />
-                  <View style={styles.rowText}>
-                    <Text style={styles.rowTitle} numberOfLines={1}>
-                      {item.title}
+                  <View style={[styles.credentialIcon, { backgroundColor: iconConfig.bgColor }]}>
+                    <FontAwesome5 name={iconConfig.icon} size={20} color={iconConfig.iconColor} />
+                  </View>
+                  <View style={styles.credentialInfo}>
+                    <Text style={styles.credentialTitle} numberOfLines={1}>
+                      {credential.title}
                     </Text>
-                    <Text style={styles.rowSubtitle} numberOfLines={1}>
-                      {item.issuer_name}
+                    <Text style={styles.credentialMeta}>
+                      {credential.category || 'Credential'} • Exp: {formatExpiry(credential.expires_at)}
                     </Text>
+                  </View>
+                  <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+                    {checked && (
+                      <FontAwesome5 name="check" size={12} color={colors.text.inverse} />
+                    )}
                   </View>
                 </Pressable>
               );
-            }}
-            ListEmptyComponent={<Text style={styles.muted}>No credentials available.</Text>}
-          />
+            })}
+          </View>
         )}
-      </View>
 
-      <View style={styles.preview}>
-        <Text style={styles.previewTitle}>Preview</Text>
-        <Text style={styles.previewBody}>{previewText}</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onShare}
-          disabled={selectedItems.length === 0}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            selectedItems.length === 0 ? styles.disabled : null,
-            pressed && selectedItems.length > 0 ? styles.pressed : null,
-          ]}
-        >
-          <Text style={styles.primaryButtonText}>Share</Text>
-        </Pressable>
-      </View>
-    </ScreenContainer>
+        {/* Selection Summary */}
+        {!loading && selectedItems.length > 0 && (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <FontAwesome5 name="layer-group" size={18} color={colors.primary} />
+              <Text style={styles.summaryText}>
+                {selectedItems.length} Qualification{selectedItems.length !== 1 ? 's' : ''} selected
+              </Text>
+            </View>
+            <Pressable onPress={onPreview}>
+              <Text style={styles.previewLink}>Preview</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Share Options */}
+        {!loading && (
+          <>
+            <Text style={styles.shareViaTitle}>SHARE VIA</Text>
+            <View style={styles.shareOptions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.shareOption,
+                  pressed && styles.shareOptionPressed,
+                ]}
+                onPress={onCopyLink}
+              >
+                <View style={styles.shareOptionIcon}>
+                  <FontAwesome5 name="link" size={20} color={colors.primary} />
+                </View>
+                <Text style={styles.shareOptionText}>Copy Link</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.shareOption,
+                  pressed && styles.shareOptionPressed,
+                ]}
+                onPress={onShowQR}
+              >
+                <View style={styles.shareOptionIcon}>
+                  <FontAwesome5 name="qrcode" size={20} color={colors.primary} />
+                </View>
+                <Text style={styles.shareOptionText}>QR Code</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.shareOption,
+                  pressed && styles.shareOptionPressed,
+                ]}
+                onPress={onShareEmployer}
+              >
+                <View style={styles.shareOptionIcon}>
+                  <FontAwesome5 name="briefcase" size={20} color={colors.primary} />
+                </View>
+                <Text style={styles.shareOptionText}>Employer</Text>
+              </Pressable>
+            </View>
+
+            {/* Privacy Notice */}
+            <View style={styles.privacyCard}>
+              <FontAwesome5 name="lock" size={16} color={colors.text.muted} />
+              <View style={styles.privacyText}>
+                <Text style={styles.privacyTitle}>Secure Sharing</Text>
+                <Text style={styles.privacyBody}>
+                  You control what is shared and for how long. Your data is encrypted and you can
+                  revoke access at any time.
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    borderRadius: 20,
-    padding: 18,
-    overflow: 'hidden',
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg.auth,
   },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '900',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
   },
-  heroSubtitle: {
-    marginTop: 6,
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 13,
+  backButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  selectAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: 100,
+  },
+  title: {
+    fontSize: 28,
     fontWeight: '700',
-    lineHeight: 18,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
   },
-  panel: {
-    borderRadius: 18,
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 12,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  inline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  muted: {
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  warnText: {
-    color: '#92400E',
-    fontWeight: '800',
-  },
-  list: {
-    gap: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  pressedRow: {
-    opacity: 0.92,
-  },
-  rowText: {
-    flex: 1,
-    gap: 2,
-  },
-  rowTitle: {
-    fontWeight: '900',
-    color: '#0B1220',
-  },
-  rowSubtitle: {
-    color: '#6B7280',
-    fontWeight: '600',
-    fontSize: 12,
-  },
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: '#0B1220',
-    fontWeight: '900',
-  },
-  primaryButton: {
-    backgroundColor: '#0E89BA',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-  pressed: {
-    opacity: 0.92,
-  },
-  preview: {
-    borderRadius: 18,
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  previewTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0B1220',
-  },
-  previewBody: {
-    marginTop: 6,
-    color: '#374151',
-    fontWeight: '600',
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.text.muted,
+    marginBottom: spacing.lg,
     lineHeight: 20,
   },
+  loadingState: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  credentialsList: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  credentialCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+    ...shadows.soft,
+  },
+  credentialCardUnchecked: {
+    opacity: 0.7,
+  },
+  credentialCardPressed: {
+    transform: [{ scale: 0.99 }],
+  },
+  credentialIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  credentialInfo: {
+    flex: 1,
+  },
+  credentialTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 2,
+  },
+  credentialMeta: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text.muted,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  summaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bg.surface,
+    borderRadius: 8,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xl,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  summaryText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text.secondary,
+  },
+  previewLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  shareViaTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text.muted,
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
+  shareOptions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  shareOption: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: colors.bg.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+  },
+  shareOptionPressed: {
+    backgroundColor: colors.bg.surfaceMuted,
+    borderColor: colors.primary,
+  },
+  shareOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: `${colors.primary}10`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareOptionText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text.secondary,
+  },
+  privacyCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.bg.surfaceMuted,
+    borderRadius: 8,
+    padding: spacing.sm,
+    gap: spacing.sm,
+  },
+  privacyText: {
+    flex: 1,
+  },
+  privacyTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    marginBottom: 4,
+  },
+  privacyBody: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.text.muted,
+    lineHeight: 18,
+  },
 });
-

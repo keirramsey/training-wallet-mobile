@@ -5,7 +5,7 @@ export type CredentialUnit = {
   title?: string;
 };
 
-export type CredentialStatus = 'verified' | 'unverified' | 'expired' | 'processing';
+export type CredentialStatus = 'verified' | 'validated' | 'unverified' | 'expired' | 'processing';
 
 export type CredentialEvidenceKind = 'image';
 

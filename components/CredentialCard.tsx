@@ -11,7 +11,6 @@ import {
   fontSizes,
   radii,
   shadows,
-  spacing,
   statusColors,
 } from '@/src/theme/tokens';
 import type { Credential, CredentialStatus } from '@/src/types/credential';
@@ -208,7 +207,7 @@ export function CredentialCard({ credential, isActive = true, onActivate, onNavi
           <Animated.View
             style={[
               styles.headerRow,
-              { paddingTop: effectiveActive ? 16 : 0 },
+              { paddingTop: effectiveActive ? 10 : 0 },
             ]}
           >
             <View style={styles.headerLeft}>
@@ -219,8 +218,8 @@ export function CredentialCard({ credential, isActive = true, onActivate, onNavi
                   {
                     opacity: logoScaleAnim,
                     transform: [{ scale: logoScaleAnim }],
-                    width: effectiveActive ? 40 : 0,
-                    marginRight: effectiveActive ? 12 : 0,
+                    width: effectiveActive ? 36 : 0,
+                    marginRight: effectiveActive ? 10 : 0,
                   },
                 ]}
               >
@@ -335,7 +334,6 @@ const styles = StyleSheet.create({
   cardContainer: {
     width: '100%',
     borderRadius: cardTokens.borderRadius,
-    ...shadows.card,
     overflow: 'hidden',
   },
   cardPressable: {
@@ -347,8 +345,8 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     borderRadius: cardTokens.borderRadius,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     overflow: 'hidden',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.1)',
@@ -391,9 +389,9 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   logoSlot: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     backgroundColor: colors.bg.surface,
     alignItems: 'center',
     justifyContent: 'center',
@@ -449,40 +447,40 @@ const styles = StyleSheet.create({
   // Expanded content
   expandedContent: {
     position: 'absolute',
-    top: 70,
+    top: 56,
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 4,
     justifyContent: 'space-between',
   },
 
   // Dates grid
   datesGrid: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   dateCell: {
     flex: 1,
   },
   dateLabel: {
     color: 'rgba(255,255,255,0.6)',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   dateValue: {
     color: colors.text.inverse,
-    fontSize: fontSizes.sm,
+    fontSize: fontSizes.xs,
     fontWeight: '600',
     letterSpacing: 0.3,
   },
   licenceId: {
     color: colors.text.inverse,
-    fontSize: fontSizes.sm,
+    fontSize: fontSizes.xs,
     fontFamily: 'SpaceMono',
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -493,7 +491,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    paddingTop: 12,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.1)',
   },
@@ -502,27 +500,27 @@ const styles = StyleSheet.create({
   },
   expiryLabel: {
     color: 'rgba(255,255,255,0.6)',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   expiryValue: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   expiryDate: {
     color: colors.text.inverse,
-    fontSize: fontSizes.lg,
+    fontSize: fontSizes.md,
     fontWeight: '700',
   },
 
   // QR button
   qrButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     backgroundColor: colors.bg.surface,
     alignItems: 'center',
     justifyContent: 'center',

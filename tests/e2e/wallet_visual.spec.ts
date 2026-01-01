@@ -3,6 +3,13 @@ import { expect, test } from '@playwright/test';
 const FIXED_TIME_ISO = '2025-01-01T00:00:00.000Z';
 const FIXED_TIME_MS = new Date(FIXED_TIME_ISO).getTime();
 const LOCAL_CREDENTIALS_KEY = 'training_wallet.local_credentials.v1';
+const AUTH_TOKEN_KEY = '@training_wallet/auth_token';
+const AUTH_USER_KEY = '@training_wallet/auth_user';
+const DEMO_USER = {
+  id: 'demo-user',
+  email: 'demo@example.com',
+  name: 'Demo User',
+};
 
 const seedLocalCredentials = () => [
   {
@@ -57,7 +64,7 @@ test.use({
 });
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(({ fixedTime, storageKey, storageValue }) => {
+  await page.addInitScript(({ fixedTime, storageKey, storageValue, authTokenKey, authUserKey, authUser }) => {
     const OriginalDate = Date;
 
     class MockDate extends OriginalDate {
@@ -105,10 +112,15 @@ test.beforeEach(async ({ page }) => {
     window.Date = MockDate;
 
     window.localStorage.setItem(storageKey, storageValue);
+    window.localStorage.setItem(authTokenKey, 'demo-token-test');
+    window.localStorage.setItem(authUserKey, authUser);
   }, {
     fixedTime: FIXED_TIME_MS,
     storageKey: LOCAL_CREDENTIALS_KEY,
     storageValue: JSON.stringify(seedLocalCredentials()),
+    authTokenKey: AUTH_TOKEN_KEY,
+    authUserKey: AUTH_USER_KEY,
+    authUser: JSON.stringify(DEMO_USER),
   });
 
   await page.route('**/api/credentials**', async (route) => {
@@ -138,14 +150,52 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('home visual regression', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/wallet');
   await page.locator('[data-testid="home-root"]:visible').first().waitFor();
   await page.locator('[data-testid="home-content"]:visible').first().waitFor({ state: 'attached' });
   await expect(page).toHaveScreenshot('home.png');
 });
 
+test.describe('compact viewport', () => {
+  test.use({
+    viewport: { width: 360, height: 780 },
+  });
+
+  test('home visual regression compact', async ({ page }) => {
+    await page.goto('/wallet');
+    await page.locator('[data-testid="home-root"]:visible').first().waitFor();
+    await page.locator('[data-testid="home-content"]:visible').first().waitFor({ state: 'attached' });
+    await expect(page).toHaveScreenshot('home-compact.png');
+  });
+});
+
+test('carousel swipes between tickets', async ({ page }) => {
+  await page.goto('/wallet');
+  await page.locator('[data-testid="home-root"]:visible').first().waitFor();
+  await page.locator('[data-testid="home-content"]:visible').first().waitFor({ state: 'attached' });
+
+  const activeCard = page.locator('[data-ticket-id]:visible');
+  await expect(activeCard).toHaveCount(1);
+  const initialId = await activeCard.first().getAttribute('data-ticket-id');
+  expect(initialId).toBeTruthy();
+
+  const box = await activeCard.first().boundingBox();
+  expect(box).toBeTruthy();
+  if (!box) return;
+
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY - 140, { steps: 12 });
+  await page.mouse.up();
+
+  await expect(activeCard).toHaveCount(1);
+  await expect.poll(async () => activeCard.first().getAttribute('data-ticket-id')).not.toBe(initialId);
+});
+
 test('credential detail visual regression', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/wallet');
   await page.locator('[data-testid="home-root"]:visible').first().waitFor();
   await page.locator('[data-testid="home-content"]:visible').first().waitFor({ state: 'attached' });
 
@@ -176,7 +226,7 @@ test('history screen with expired filter', async ({ page }) => {
   await page.waitForLoadState('networkidle');
 
   // Click on Expired filter chip
-  const expiredChip = page.getByRole('button', { name: 'Expired' });
+  const expiredChip = page.getByRole('button', { name: 'Show Expired' });
   await expiredChip.click();
   await page.waitForTimeout(300);
 
@@ -190,28 +240,28 @@ test('profile screen visual regression', async ({ page }) => {
   await expect(page).toHaveScreenshot('profile.png');
 });
 
-test('bottom navigation is visible on all screens', async ({ page }) => {
+test('bottom navigation is visible on tab screens', async ({ page }) => {
   // Check wallet tab
-  await page.goto('/');
+  await page.goto('/wallet');
   await page.waitForLoadState('networkidle');
-  const walletTab = page.getByRole('button', { name: /wallet/i }).first();
+  const walletTab = page.getByRole('tab', { name: /wallet/i }).first();
   await expect(walletTab).toBeVisible();
 
   // Check history tab
   await page.goto('/history');
   await page.waitForLoadState('networkidle');
-  const historyTab = page.getByRole('button', { name: /history/i }).first();
+  const historyTab = page.getByRole('tab', { name: /history/i }).first();
   await expect(historyTab).toBeVisible();
 
-  // Check profile tab
-  await page.goto('/profile');
+  // Check courses tab
+  await page.goto('/courses');
   await page.waitForLoadState('networkidle');
-  const profileTab = page.getByRole('button', { name: /profile/i }).first();
-  await expect(profileTab).toBeVisible();
+  const coursesTab = page.getByRole('tab', { name: /courses/i }).first();
+  await expect(coursesTab).toBeVisible();
 });
 
 test('central AI button is visible', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/wallet');
   await page.waitForLoadState('networkidle');
 
   // Check for the AI assistant button

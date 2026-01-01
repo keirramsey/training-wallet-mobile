@@ -1,26 +1,34 @@
-import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useLocalSearchParams } from 'expo-router';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
+import {
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ScreenContainer } from '@/components/ScreenContainer';
 import { addLocalCredential } from '@/src/storage/credentialsStore';
+import { colors, fontSizes, shadows, spacing } from '@/src/theme/tokens';
 import type { CredentialEvidence, CredentialUnit } from '@/src/types/credential';
-
-type Field = { label: string; placeholder: string };
 
 function parseDateToIso(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) throw new Error('Date is required');
-
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     const iso = `${trimmed}T00:00:00.000Z`;
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) throw new Error('Date must be valid (YYYY-MM-DD)');
     return date.toISOString();
   }
-
   const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) throw new Error('Date must be valid (YYYY-MM-DD)');
   return date.toISOString();
@@ -28,33 +36,25 @@ function parseDateToIso(value: string): string {
 
 export default function AddManualScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ evidence_uri?: string; evidence_meta?: string }>();
   const evidenceUri = typeof params.evidence_uri === 'string' ? params.evidence_uri : '';
   const evidenceMeta = typeof params.evidence_meta === 'string' ? params.evidence_meta : '';
 
-  const [title, setTitle] = useState('');
-  const [issuer, setIssuer] = useState('');
+  // Form state
+  const [rtoName, setRtoName] = useState('');
+  const [courseName, setCourseName] = useState('');
+  const [unitInput, setUnitInput] = useState('');
+  const [units, setUnits] = useState<CredentialUnit[]>([]);
   const [issuedAt, setIssuedAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [noExpiry, setNoExpiry] = useState(false);
-
-  const [unitCode, setUnitCode] = useState('');
-  const [unitTitle, setUnitTitle] = useState('');
-  const [units, setUnits] = useState<CredentialUnit[]>([]);
-
+  const [certificateUri, setCertificateUri] = useState(evidenceUri);
   const [saving, setSaving] = useState(false);
 
-  const fields = useMemo<Field[]>(
-    () => [
-      { label: 'Credential title', placeholder: 'e.g. HLTAID011 Provide First Aid' },
-      { label: 'Issuer', placeholder: 'e.g. Search Training (Demo RTO)' },
-      { label: 'Issued date', placeholder: 'YYYY-MM-DD' },
-      { label: 'Expiry (optional)', placeholder: 'YYYY-MM-DD or leave blank' },
-    ],
-    []
-  );
+  const isValid = courseName.trim().length > 0 && issuedAt.trim().length > 0;
 
-  const isValid = title.trim().length > 0 && issuer.trim().length > 0 && issuedAt.trim().length > 0;
+  const goBack = useCallback(() => router.back(), [router]);
 
   const onToggleNoExpiry = useCallback((next: boolean) => {
     setNoExpiry(next);
@@ -62,50 +62,55 @@ export default function AddManualScreen() {
   }, []);
 
   const onAddUnit = useCallback(() => {
-    const code = unitCode.trim();
-    const title = unitTitle.trim();
+    const code = unitInput.trim().toUpperCase();
     if (!code) return;
-    setUnits((prev) => [...prev, { code, title: title || undefined }]);
-    setUnitCode('');
-    setUnitTitle('');
-  }, [unitCode, unitTitle]);
+    if (units.some((u) => u.code === code)) return;
+    setUnits((prev) => [...prev, { code }]);
+    setUnitInput('');
+  }, [unitInput, units]);
 
-  const onRemoveUnit = useCallback((index: number) => {
-    setUnits((prev) => prev.filter((_u, i) => i !== index));
+  const onRemoveUnit = useCallback((code: string) => {
+    setUnits((prev) => prev.filter((u) => u.code !== code));
+  }, []);
+
+  const pickCertificate = useCallback(async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Please allow photo library access.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      setCertificateUri(result.assets[0].uri);
+    }
   }, []);
 
   const onSave = useCallback(async () => {
-    if (saving) return;
-    if (!isValid) return;
-
+    if (saving || !isValid) return;
     try {
       setSaving(true);
       const issuedIso = parseDateToIso(issuedAt);
       const expiresIso = noExpiry || !expiresAt.trim() ? null : parseDateToIso(expiresAt);
 
       let evidence: CredentialEvidence[] | undefined;
-      if (evidenceUri.trim().length > 0) {
+      if (certificateUri.trim()) {
         let meta: Record<string, unknown> | undefined;
-        if (evidenceMeta.trim().length > 0) {
+        if (evidenceMeta.trim()) {
           try {
             meta = JSON.parse(evidenceMeta) as Record<string, unknown>;
           } catch {
             meta = { raw: evidenceMeta };
           }
         }
-        evidence = [
-          {
-            uri: evidenceUri,
-            kind: 'image',
-            created_at: new Date().toISOString(),
-            meta,
-          },
-        ];
+        evidence = [{ uri: certificateUri, kind: 'image', created_at: new Date().toISOString(), meta }];
       }
 
       const created = await addLocalCredential({
-        title,
-        issuer_name: issuer,
+        title: courseName,
+        issuer_name: rtoName || 'Unknown RTO',
         issued_at: issuedIso,
         expires_at: expiresIso,
         units,
@@ -118,342 +123,462 @@ export default function AddManualScreen() {
     } finally {
       setSaving(false);
     }
-  }, [evidenceMeta, evidenceUri, expiresAt, issuer, isValid, issuedAt, noExpiry, router, saving, title, units]);
+  }, [certificateUri, courseName, evidenceMeta, expiresAt, isValid, issuedAt, noExpiry, rtoName, router, saving, units]);
 
   return (
-    <ScreenContainer>
-      <LinearGradient
-        colors={['#2BC9F4', '#0E89BA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
-      >
-        <Text style={styles.heroTitle}>Manual entry</Text>
-        <Text style={styles.heroSubtitle}>Saved locally on this device (unverified).</Text>
-      </LinearGradient>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Details</Text>
-
-        {evidenceUri.trim().length > 0 && (
-          <View style={styles.evidenceCard}>
-            <Text style={styles.evidenceTitle}>Evidence attached</Text>
-            <Text style={styles.evidenceBody}>This credential will be saved with your uploaded certificate image.</Text>
-          </View>
-        )}
-
-        <View style={styles.field}>
-          <Text style={styles.label}>{fields[0].label}</Text>
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder={fields[0].placeholder}
-            placeholderTextColor="#9CA3AF"
-            style={styles.input}
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>{fields[1].label}</Text>
-          <TextInput
-            value={issuer}
-            onChangeText={setIssuer}
-            placeholder={fields[1].placeholder}
-            placeholderTextColor="#9CA3AF"
-            style={styles.input}
-          />
-        </View>
-
-        <View style={styles.fieldRow}>
-          <View style={[styles.field, styles.fieldHalf]}>
-            <Text style={styles.label}>{fields[2].label}</Text>
-            <TextInput
-              value={issuedAt}
-              onChangeText={setIssuedAt}
-              placeholder={fields[2].placeholder}
-              placeholderTextColor="#9CA3AF"
-              style={styles.input}
-              autoCapitalize="none"
-            />
-          </View>
-          <View style={[styles.field, styles.fieldHalf]}>
-            <Text style={styles.label}>{fields[3].label}</Text>
-            <TextInput
-              value={expiresAt}
-              onChangeText={setExpiresAt}
-              placeholder={fields[3].placeholder}
-              placeholderTextColor="#9CA3AF"
-              style={styles.input}
-              autoCapitalize="none"
-              editable={!noExpiry}
-            />
-          </View>
-        </View>
-
-        <View style={styles.switchRow}>
-          <View style={styles.switchText}>
-            <Text style={styles.switchTitle}>No expiry</Text>
-            <Text style={styles.switchBody}>For tickets that don’t expire</Text>
-          </View>
-          <Switch value={noExpiry} onValueChange={onToggleNoExpiry} />
-        </View>
-
-        <View style={styles.panelDivider} />
-
-        <Text style={styles.panelTitle}>Units (optional)</Text>
-
-        <View style={styles.fieldRow}>
-          <View style={[styles.field, styles.fieldHalf]}>
-            <Text style={styles.label}>Unit code</Text>
-            <TextInput
-              value={unitCode}
-              onChangeText={setUnitCode}
-              placeholder="e.g. HLTAID011"
-              placeholderTextColor="#9CA3AF"
-              style={styles.input}
-              autoCapitalize="characters"
-            />
-          </View>
-          <View style={[styles.field, styles.fieldHalf]}>
-            <Text style={styles.label}>Unit title</Text>
-            <TextInput
-              value={unitTitle}
-              onChangeText={setUnitTitle}
-              placeholder="Optional"
-              placeholderTextColor="#9CA3AF"
-              style={styles.input}
-            />
-          </View>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={onAddUnit}
-          disabled={!unitCode.trim()}
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            !unitCode.trim() ? styles.buttonDisabled : null,
-            pressed && unitCode.trim() ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text style={styles.secondaryButtonText}>Add unit</Text>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <Pressable onPress={goBack} style={styles.headerButton}>
+          <FontAwesome5 name="times" size={20} color={colors.text.primary} />
         </Pressable>
-
-        {units.length > 0 && (
-          <View style={styles.unitsList}>
-            {units.map((unit, index) => (
-              <View key={`${unit.code}-${index}`} style={styles.unitRow}>
-                <View style={styles.unitPill}>
-                  <Text style={styles.unitCode}>{unit.code}</Text>
-                </View>
-                <Text style={styles.unitName} numberOfLines={1}>
-                  {unit.title || 'Unit'}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => onRemoveUnit(index)}
-                  style={({ pressed }) => [styles.unitRemove, pressed ? styles.buttonPressed : null]}
-                >
-                  <Text style={styles.unitRemoveText}>Remove</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        )}
-
+        <Text style={styles.headerTitle}>Add Training</Text>
         <Pressable
-          accessibilityRole="button"
-          disabled={!isValid || saving}
           onPress={onSave}
-          style={({ pressed }) => [
-            styles.button,
-            !isValid || saving ? styles.buttonDisabled : null,
-            pressed && isValid && !saving ? styles.buttonPressed : null,
-          ]}
+          disabled={!isValid || saving}
+          style={styles.headerButton}
         >
-          <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save'}</Text>
+          <Text style={[styles.saveText, (!isValid || saving) && styles.saveDisabled]}>
+            Save
+          </Text>
         </Pressable>
       </View>
-    </ScreenContainer>
+
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {/* Provider Details */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Provider Details</Text>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>RTO Name</Text>
+            <View style={styles.searchInput}>
+              <TextInput
+                style={styles.searchTextInput}
+                placeholder="Search registered training organisations"
+                placeholderTextColor={colors.input.placeholder}
+                value={rtoName}
+                onChangeText={setRtoName}
+              />
+              <FontAwesome5 name="search" size={16} color={colors.input.placeholder} />
+            </View>
+          </View>
+          <View style={styles.rtoCard}>
+            <View style={styles.rtoIcon}>
+              <FontAwesome5 name="graduation-cap" size={20} color={colors.input.placeholder} />
+            </View>
+            <View style={styles.rtoText}>
+              <Text style={styles.rtoTitle}>{rtoName || 'No RTO Selected'}</Text>
+              <Text style={styles.rtoSubtitle}>
+                {rtoName ? 'Registered Training Organisation' : 'Select an RTO to see logo'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* Qualification */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Qualification</Text>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Course / Qualification Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Certificate III in Business"
+              placeholderTextColor={colors.input.placeholder}
+              value={courseName}
+              onChangeText={setCourseName}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Units of Competency</Text>
+            <View style={styles.unitsContainer}>
+              <View style={styles.unitChips}>
+                {units.map((unit) => (
+                  <View key={unit.code} style={styles.unitChip}>
+                    <Text style={styles.unitChipText}>{unit.code}</Text>
+                    <Pressable onPress={() => onRemoveUnit(unit.code)}>
+                      <FontAwesome5 name="times" size={12} color={colors.primary} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+              <TextInput
+                style={styles.unitInput}
+                placeholder="Search units or enter code..."
+                placeholderTextColor={colors.input.placeholder}
+                value={unitInput}
+                onChangeText={setUnitInput}
+                onSubmitEditing={onAddUnit}
+                autoCapitalize="characters"
+              />
+            </View>
+            <Text style={styles.fieldHint}>Multiple selection allowed</Text>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* Dates */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Dates</Text>
+          <View style={styles.dateRow}>
+            <View style={styles.dateField}>
+              <Text style={styles.fieldLabel}>Issue Date</Text>
+              <View style={styles.dateInput}>
+                <TextInput
+                  style={styles.dateTextInput}
+                  placeholder="mm/dd/yyyy"
+                  placeholderTextColor={colors.input.placeholder}
+                  value={issuedAt}
+                  onChangeText={setIssuedAt}
+                />
+                <FontAwesome5 name="calendar-alt" size={16} color={colors.input.placeholder} />
+              </View>
+            </View>
+            <View style={styles.dateField}>
+              <Text style={styles.fieldLabel}>Expiry Date</Text>
+              <View style={[styles.dateInput, noExpiry && styles.dateInputDisabled]}>
+                <TextInput
+                  style={styles.dateTextInput}
+                  placeholder="mm/dd/yyyy"
+                  placeholderTextColor={colors.input.placeholder}
+                  value={expiresAt}
+                  onChangeText={setExpiresAt}
+                  editable={!noExpiry}
+                />
+                <FontAwesome5 name="calendar-alt" size={16} color={colors.input.placeholder} />
+              </View>
+            </View>
+          </View>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>This training does not expire</Text>
+            <Switch
+              value={noExpiry}
+              onValueChange={onToggleNoExpiry}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFF"
+            />
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* Evidence */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Evidence</Text>
+          <Pressable style={styles.uploadBox} onPress={pickCertificate}>
+            {certificateUri ? (
+              <Image source={{ uri: certificateUri }} style={styles.uploadPreview} />
+            ) : (
+              <>
+                <View style={styles.uploadIconWrap}>
+                  <FontAwesome5 name="cloud-upload-alt" size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.uploadTitle}>Upload Certificate</Text>
+                <Text style={styles.uploadSubtitle}>PDF or Photo (Max 5MB)</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+
+        {/* Info Banner */}
+        <View style={styles.infoBanner}>
+          <FontAwesome5 name="info-circle" size={16} color={colors.primary} />
+          <Text style={styles.infoText}>
+            <Text style={styles.infoBold}>Self-attested:</Text> This record will be marked as
+            'Unverified' until confirmed by the issuing RTO.
+          </Text>
+        </View>
+      </ScrollView>
+
+      {/* Bottom Action */}
+      <View style={[styles.bottomAction, { paddingBottom: insets.bottom + spacing.lg }]}>
+        <Pressable
+          style={[styles.addButton, (!isValid || saving) && styles.addButtonDisabled]}
+          onPress={onSave}
+          disabled={!isValid || saving}
+        >
+          <Text style={styles.addButtonText}>{saving ? 'Saving...' : 'Add Training'}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    borderRadius: 20,
-    padding: 18,
-    overflow: 'hidden',
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg.auth,
   },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '900',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.bg.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  heroSubtitle: {
-    marginTop: 6,
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 13,
+  headerButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: fontSizes.lg,
     fontWeight: '700',
-    lineHeight: 18,
+    color: colors.text.primary,
   },
-  panel: {
-    borderRadius: 18,
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 12,
-  },
-  panelTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0B1220',
-  },
-  evidenceCard: {
-    borderRadius: 14,
-    padding: 12,
-    backgroundColor: '#ECFEFF',
-    borderWidth: 1,
-    borderColor: '#A5F3FC',
-    gap: 4,
-  },
-  evidenceTitle: {
-    fontWeight: '900',
-    color: '#0B1220',
-  },
-  evidenceBody: {
-    color: '#4B5563',
+  saveText: {
+    fontSize: fontSizes.md,
     fontWeight: '600',
-    lineHeight: 18,
-    fontSize: 12,
+    color: colors.primary,
+  },
+  saveDisabled: {
+    color: colors.text.muted,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 120,
+  },
+  section: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+  },
+  divider: {
+    height: 8,
+    backgroundColor: colors.bg.surfaceMuted,
   },
   field: {
+    marginBottom: spacing.md,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: colors.text.muted,
+    marginTop: spacing.xs,
+  },
+  input: {
+    height: 48,
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.input.border,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  searchInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.input.border,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+  },
+  searchTextInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  rtoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+    gap: spacing.md,
+  },
+  rtoIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: colors.bg.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rtoText: {
+    flex: 1,
+  },
+  rtoTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text.primary,
+  },
+  rtoSubtitle: {
+    fontSize: 12,
+    color: colors.text.muted,
+    marginTop: 2,
+  },
+  unitsContainer: {
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.input.border,
+    borderRadius: 8,
+    padding: spacing.sm,
+  },
+  unitChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  unitChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: `${colors.primary}15`,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
     gap: 6,
   },
-  fieldRow: {
-    flexDirection: 'row',
-    gap: 10,
+  unitChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
   },
-  fieldHalf: {
+  unitInput: {
+    fontSize: 16,
+    color: colors.text.primary,
+    paddingVertical: 8,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  dateField: {
     flex: 1,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.input.border,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+  },
+  dateInputDisabled: {
+    backgroundColor: colors.bg.surfaceMuted,
+    opacity: 0.6,
+  },
+  dateTextInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text.primary,
   },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 6,
+    marginTop: spacing.md,
   },
-  switchText: {
-    flex: 1,
-    gap: 2,
+  switchLabel: {
+    fontSize: 16,
+    color: colors.text.primary,
   },
-  switchTitle: {
-    fontWeight: '900',
-    color: '#0B1220',
-  },
-  switchBody: {
-    color: '#6B7280',
-    fontWeight: '600',
-    fontSize: 12,
-  },
-  panelDivider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 4,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+  uploadBox: {
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-    color: '#0B1220',
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    padding: spacing.xl,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg.surfaceMuted,
+    minHeight: 150,
   },
-  secondaryButtonText: {
-    color: '#0B1220',
-    fontWeight: '900',
+  uploadIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.bg.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+    ...shadows.soft,
   },
-  unitsList: {
-    gap: 10,
+  uploadTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text.primary,
+    marginBottom: 4,
   },
-  unitRow: {
+  uploadSubtitle: {
+    fontSize: 14,
+    color: colors.text.muted,
+  },
+  uploadPreview: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+  },
+  infoBanner: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: '#F9FAFB',
+    alignItems: 'flex-start',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    padding: spacing.sm,
+    marginHorizontal: spacing.lg,
+    gap: spacing.sm,
   },
-  unitPill: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#ECFEFF',
-    borderWidth: 1,
-    borderColor: '#A5F3FC',
-  },
-  unitCode: {
-    fontFamily: 'SpaceMono',
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#0B1220',
-  },
-  unitName: {
+  infoText: {
     flex: 1,
-    color: '#0B1220',
-    fontWeight: '700',
+    fontSize: 14,
+    color: '#1E40AF',
+    lineHeight: 20,
   },
-  unitRemove: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+  infoBold: {
+    fontWeight: '600',
   },
-  unitRemoveText: {
-    color: '#6B7280',
-    fontWeight: '800',
-    fontSize: 12,
+  bottomAction: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    padding: spacing.lg,
   },
-  button: {
-    marginTop: 6,
-    backgroundColor: '#0E89BA',
+  addButton: {
+    height: 56,
+    backgroundColor: colors.primary,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.soft,
   },
-  buttonDisabled: {
+  addButtonDisabled: {
     opacity: 0.6,
   },
-  buttonPressed: {
-    opacity: 0.92,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
+  addButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text.inverse,
   },
 });
