@@ -48,7 +48,7 @@ const CAROUSEL_OVERLAP = 16;
 const CAROUSEL_STACK_HEIGHT =
   EXPANDED_HEIGHT + (CAROUSEL_WINDOW - 1) * (COLLAPSED_HEIGHT - CAROUSEL_OVERLAP);
 const ACTION_BANNER_GAP = Math.round(spacing.md * 0.8);
-const CAROUSEL_MARGIN_TOP = Math.round((spacing.xl + spacing.xs) * 0.95);
+const CAROUSEL_MARGIN_TOP = Math.round((spacing.xl + spacing.xs) * 0.75);
 
 const wrapIndex = (index: number, length: number) => {
   if (length === 0) return 0;
