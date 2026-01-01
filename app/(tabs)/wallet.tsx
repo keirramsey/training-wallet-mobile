@@ -42,7 +42,6 @@ import {
 const COLLAPSED_HEIGHT = CARD_HEIGHT_COLLAPSED;
 const EXPANDED_HEIGHT = CARD_HEIGHT;
 const PILLS_HEIGHT = 56;
-const BOTTOM_CONTENT_PADDING = PILLS_HEIGHT + spacing.lg;
 const CAROUSEL_WINDOW = 5;
 const CAROUSEL_SWIPE_THRESHOLD = 36;
 const CAROUSEL_OVERLAP = 16;
@@ -55,7 +54,7 @@ const wrapIndex = (index: number, length: number) => {
 };
 
 // Search Training Logo
-const SearchTrainingLogo = ({ size = 36 }: { size?: number }) => {
+const SearchTrainingLogo = ({ size = 30 }: { size?: number }) => {
   return (
     <Svg width={size} height={size} viewBox="0 0 44 44" fill="none">
       <Defs>
@@ -328,7 +327,10 @@ export default function WalletScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: PILLS_HEIGHT + spacing.xs + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
         testID="home-content"
         scrollEnabled={!carouselDragging}
@@ -444,44 +446,46 @@ export default function WalletScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.carouselWrapper}>
-          <View
-            ref={carouselRef}
-            style={styles.carouselContainer}
-            testID="wallet-carousel"
-            {...carouselPanResponder.panHandlers}
-          >
-            {loading ? (
-              <ActivityIndicator size="large" color={colors.brand.blue} />
-            ) : error && items.length === 0 ? (
-              <View style={styles.errorState}>
-                <FontAwesome5 name="exclamation-circle" size={32} color={colors.text.muted} />
-                <Text style={styles.errorText}>{error.message}</Text>
-              </View>
-            ) : (
-              <View style={{ alignItems: 'center' }}>
-                {displayItems.map(({ item, itemIndex }, index) => (
-                  <CarouselItemUnified
-                    key={`${item.id}-${itemIndex}`}
-                    item={item}
-                    index={index}
-                    activeIndex={activeIndex}
-                    isActive={index === activeIndex}
-                    onActivate={() => onActivateCard(itemIndex)}
-                    onNavigate={() => onCardNavigate(item.id)}
-                  />
-                ))}
-              </View>
-            )}
+        <View style={styles.carouselArea}>
+          <View style={styles.carouselWrapper}>
+            <View
+              ref={carouselRef}
+              style={styles.carouselContainer}
+              testID="wallet-carousel"
+              {...carouselPanResponder.panHandlers}
+            >
+              {loading ? (
+                <ActivityIndicator size="large" color={colors.brand.blue} />
+              ) : error && items.length === 0 ? (
+                <View style={styles.errorState}>
+                  <FontAwesome5 name="exclamation-circle" size={32} color={colors.text.muted} />
+                  <Text style={styles.errorText}>{error.message}</Text>
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center' }}>
+                  {displayItems.map(({ item, itemIndex }, index) => (
+                    <CarouselItemUnified
+                      key={`${item.id}-${itemIndex}`}
+                      item={item}
+                      index={index}
+                      activeIndex={activeIndex}
+                      isActive={index === activeIndex}
+                      onActivate={() => onActivateCard(itemIndex)}
+                      onNavigate={() => onCardNavigate(item.id)}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
           </View>
         </View>
       </ScrollView>
 
       {/* Bottom Pills - with padding to not overlap content */}
-      <View style={[styles.bottomPills, { bottom: insets.bottom + spacing.md }]}>
+      <View style={[styles.bottomPills, { bottom: insets.bottom + spacing.sm }]}>
         <Pressable
           onPress={onAddTicket}
-          style={({ pressed }) => pressed && styles.pressed}
+          style={({ pressed }) => [styles.pillItem, styles.pillItemLeft, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Add new ticket"
         >
@@ -496,12 +500,12 @@ export default function WalletScreen() {
           </LinearGradient>
         </Pressable>
         <Pressable
-          style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.searchButton, styles.pillItem, pressed && styles.pressed]}
           onPress={onFindTraining}
           accessibilityRole="button"
           accessibilityLabel="Search for training courses"
         >
-          <SearchTrainingLogo size={36} />
+          <SearchTrainingLogo size={30} />
           <Text style={styles.searchTitle}>Search Training</Text>
         </Pressable>
       </View>
@@ -679,7 +683,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: spacing.md,
-    paddingBottom: BOTTOM_CONTENT_PADDING, // Space for bottom pills
+    flexGrow: 1,
   },
   header: {
     flexDirection: 'row',
@@ -866,6 +870,10 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: fontSizes.xl, fontWeight: '900', color: colors.text.primary },
   viewAllText: { fontSize: fontSizes.xs, fontWeight: '800', color: colors.brand.blue },
 
+  carouselArea: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+  },
   carouselWrapper: {
     position: 'relative',
     zIndex: 1,
@@ -967,6 +975,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  pillItem: {
+    flex: 1,
+  },
+  pillItemLeft: {
+    marginRight: spacing.md,
+  },
   addTicketButton: {
     height: PILLS_HEIGHT,
     borderRadius: 28,
@@ -974,6 +988,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    width: '100%',
     ...shadows.soft,
   },
   addTicketText: { color: colors.text.inverse, fontWeight: '700', fontSize: fontSizes.sm },
@@ -989,7 +1004,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadows.soft,
   },
-  searchTitle: { fontSize: fontSizes.sm, fontWeight: '700', color: colors.text.primary },
+  searchTitle: {
+    fontSize: fontSizes.sm,
+    fontWeight: '700',
+    color: colors.text.primary,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
 
   pressed: {
     opacity: pressedState.opacity,
