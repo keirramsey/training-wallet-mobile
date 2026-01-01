@@ -47,6 +47,7 @@ const CAROUSEL_SWIPE_THRESHOLD = 36;
 const CAROUSEL_OVERLAP = 16;
 const CAROUSEL_STACK_HEIGHT =
   EXPANDED_HEIGHT + (CAROUSEL_WINDOW - 1) * (COLLAPSED_HEIGHT - CAROUSEL_OVERLAP);
+const ACTION_BANNER_GAP = Math.round(spacing.md * 0.8);
 
 const wrapIndex = (index: number, length: number) => {
   if (length === 0) return 0;
@@ -751,7 +752,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.md,
+    marginBottom: ACTION_BANNER_GAP,
     zIndex: 50, // Ensure banner stays above cards
     ...shadows.soft,
   },
@@ -972,8 +973,8 @@ const styles = StyleSheet.create({
 
   bottomPills: {
     position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
+    left: spacing.xxl,
+    right: spacing.xxl,
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.md,
