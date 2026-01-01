@@ -482,15 +482,15 @@ export default function WalletScreen() {
       </ScrollView>
 
       {/* Bottom Pills - with padding to not overlap content */}
-      <View style={[styles.bottomPills, { bottom: insets.bottom + spacing.sm }]}>
-        <Pressable
-          onPress={onAddTicket}
-          style={({ pressed }) => [styles.pillItem, styles.pillItemLeft, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Add new ticket"
-        >
-          <LinearGradient
-            colors={[colors.brand.cyan, colors.brand.blue]}
+        <View style={[styles.bottomPills, { bottom: insets.bottom + spacing.sm }]}>
+          <Pressable
+            onPress={onAddTicket}
+            style={({ pressed }) => [styles.pillItem, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Add new ticket"
+          >
+            <LinearGradient
+              colors={[colors.brand.cyan, colors.brand.blue]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.addTicketButton}
@@ -505,8 +505,10 @@ export default function WalletScreen() {
           accessibilityRole="button"
           accessibilityLabel="Search for training courses"
         >
-          <SearchTrainingLogo size={30} />
-          <Text style={styles.searchTitle}>Search Training</Text>
+          <View style={styles.searchContent}>
+            <SearchTrainingLogo size={30} />
+            <Text style={styles.searchTitle}>Search Training</Text>
+          </View>
         </Pressable>
       </View>
     </View>
@@ -877,7 +879,7 @@ const styles = StyleSheet.create({
   carouselWrapper: {
     position: 'relative',
     zIndex: 1,
-    marginTop: spacing.xxl + spacing.sm,
+    marginTop: spacing.xl + spacing.xs,
     height: CAROUSEL_STACK_HEIGHT,
     overflow: 'hidden',
     alignItems: 'center',
@@ -974,12 +976,11 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: spacing.md,
   },
   pillItem: {
     flex: 1,
-  },
-  pillItemLeft: {
-    marginRight: spacing.md,
+    minWidth: 0,
   },
   addTicketButton: {
     height: PILLS_HEIGHT,
@@ -996,20 +997,25 @@ const styles = StyleSheet.create({
     height: PILLS_HEIGHT,
     backgroundColor: colors.bg.surface,
     borderRadius: 28,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    gap: spacing.sm,
+    justifyContent: 'flex-end',
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.soft,
+  },
+  searchContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   searchTitle: {
     fontSize: fontSizes.sm,
     fontWeight: '700',
     color: colors.text.primary,
     flexShrink: 1,
-    textAlign: 'center',
+    textAlign: 'right',
   },
 
   pressed: {
