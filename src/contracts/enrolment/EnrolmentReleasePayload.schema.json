@@ -1,0 +1,548 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EnrolmentReleasePayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meta", "learner", "enrolment", "consents"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "sourceSystem", "createdAt", "releasedAt"],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "sourceSystem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceSystemVersion": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "releasedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "payloadId": {
+          "type": "string"
+        },
+        "correlationId": {
+          "type": "string"
+        }
+      }
+    },
+    "learner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "contact",
+        "residentialAddress",
+        "postalAddress",
+        "demographics",
+        "education",
+        "employment",
+        "usi"
+      ],
+      "properties": {
+        "learnerId": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["familyName", "givenNames", "dateOfBirth", "sex"],
+          "properties": {
+            "familyName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "givenNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string"
+            },
+            "dateOfBirth": {
+              "$ref": "#/$defs/isoDate"
+            },
+            "sex": {
+              "$ref": "#/$defs/codeReference"
+            }
+          }
+        },
+        "contact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["email"],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "mobilePhone": {
+              "$ref": "#/$defs/phone"
+            },
+            "otherPhone": {
+              "$ref": "#/$defs/phone"
+            }
+          },
+          "anyOf": [{ "required": ["mobilePhone"] }, { "required": ["otherPhone"] }]
+        },
+        "residentialAddress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["line1", "suburbTown", "state", "postcode", "country"],
+          "properties": {
+            "line1": {
+              "type": "string",
+              "minLength": 1
+            },
+            "line2": {
+              "type": "string"
+            },
+            "suburbTown": {
+              "type": "string",
+              "minLength": 1
+            },
+            "state": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "postcode": {
+              "type": "string",
+              "pattern": "^[0-9]{4}$"
+            },
+            "country": {
+              "$ref": "#/$defs/codeReference"
+            }
+          }
+        },
+        "postalAddress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sameAsResidential"],
+          "properties": {
+            "sameAsResidential": {
+              "type": "boolean"
+            },
+            "line1": {
+              "type": "string",
+              "minLength": 1
+            },
+            "line2": {
+              "type": "string"
+            },
+            "suburbTown": {
+              "type": "string",
+              "minLength": 1
+            },
+            "state": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "postcode": {
+              "type": "string",
+              "pattern": "^[0-9]{4}$"
+            },
+            "country": {
+              "$ref": "#/$defs/codeReference"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "sameAsResidential": { "const": false }
+                },
+                "required": ["sameAsResidential"]
+              },
+              "then": {
+                "required": ["line1", "suburbTown", "state", "postcode", "country"]
+              }
+            }
+          ]
+        },
+        "demographics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["indigenousStatus", "countryOfBirth", "languageAtHome", "disabilityFlag"],
+          "properties": {
+            "indigenousStatus": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "countryOfBirth": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "languageAtHome": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "disabilityFlag": {
+              "type": "boolean"
+            },
+            "disabilityTypes": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/codeReference" },
+              "minItems": 1
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "disabilityFlag": { "const": true }
+                },
+                "required": ["disabilityFlag"]
+              },
+              "then": {
+                "required": ["disabilityTypes"]
+              }
+            }
+          ]
+        },
+        "education": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["highestSchoolLevelCompleted", "stillAtSchool", "priorEducationAchievements"],
+          "properties": {
+            "highestSchoolLevelCompleted": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "yearSchoolCompleted": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "stillAtSchool": {
+              "type": "boolean"
+            },
+            "priorEducationAchievements": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/codeReference" },
+              "minItems": 1
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "stillAtSchool": { "const": false }
+                },
+                "required": ["stillAtSchool"]
+              },
+              "then": {
+                "required": ["yearSchoolCompleted"]
+              }
+            }
+          ]
+        },
+        "employment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["labourForceStatus", "studyReason"],
+          "properties": {
+            "labourForceStatus": {
+              "$ref": "#/$defs/codeReference"
+            },
+            "studyReason": {
+              "$ref": "#/$defs/codeReference"
+            }
+          }
+        },
+        "usi": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["usi", "usiVerifiedStatus", "usiConsentVersion", "usiConsentSignedAt"],
+          "properties": {
+            "usi": {
+              "$ref": "#/$defs/usi"
+            },
+            "usiVerifiedStatus": {
+              "type": "string",
+              "enum": ["unverified", "verified", "exempt", "unknown"]
+            },
+            "usiConsentVersion": {
+              "type": "string",
+              "minLength": 1
+            },
+            "usiConsentSignedAt": {
+              "$ref": "#/$defs/isoDateTime"
+            },
+            "usiExemptionReason": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "enrolment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "courseInstanceId",
+        "rtoId",
+        "deliveryLocationId",
+        "commencementDate",
+        "completionDate",
+        "paymentStatus"
+      ],
+      "properties": {
+        "enrolmentId": {
+          "type": "string"
+        },
+        "courseInstanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "courseId": {
+          "type": "string"
+        },
+        "rtoId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deliveryLocationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commencementDate": {
+          "$ref": "#/$defs/isoDate"
+        },
+        "completionDate": {
+          "$ref": "#/$defs/isoDate"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fundingSource": {
+          "type": "string"
+        },
+        "outcomeIdentifier": {
+          "type": "string"
+        }
+      }
+    },
+    "consents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ncverPrivacyNoticeVersion",
+        "ncverPrivacyNoticeAckAt",
+        "avetmissReleaseConsent",
+        "avetmissReleaseVersion",
+        "avetmissReleaseSignedAt"
+      ],
+      "properties": {
+        "ncverPrivacyNoticeVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ncverPrivacyNoticeAckAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "ncverSurveyOptOut": {
+          "type": "boolean"
+        },
+        "avetmissReleaseConsent": {
+          "type": "boolean"
+        },
+        "avetmissReleaseVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "avetmissReleaseSignedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "employer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["employerName"],
+          "properties": {
+            "employerName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "employerAbn": {
+              "type": "string"
+            },
+            "employerContactName": {
+              "type": "string"
+            },
+            "employerContactPhone": {
+              "$ref": "#/$defs/phone"
+            },
+            "employerContactEmail": {
+              "type": "string",
+              "format": "email"
+            }
+          }
+        },
+        "guardian": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["isMinor"],
+          "properties": {
+            "isMinor": {
+              "type": "boolean"
+            },
+            "guardianName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "guardianPhone": {
+              "$ref": "#/$defs/phone"
+            },
+            "guardianEmail": {
+              "type": "string",
+              "format": "email"
+            },
+            "guardianConsentSignedAt": {
+              "$ref": "#/$defs/isoDateTime"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "isMinor": { "const": true }
+                },
+                "required": ["isMinor"]
+              },
+              "then": {
+                "required": ["guardianName", "guardianPhone", "guardianConsentSignedAt"]
+              }
+            }
+          ]
+        },
+        "waivers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "waiverTemplateId",
+              "waiverVersion",
+              "waiverSignedAt",
+              "waiverSignatureMethod"
+            ],
+            "properties": {
+              "waiverTemplateId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "waiverVersion": {
+                "type": "string",
+                "minLength": 1
+              },
+              "waiverSignedAt": {
+                "$ref": "#/$defs/isoDateTime"
+              },
+              "waiverSignatureMethod": {
+                "type": "string",
+                "enum": ["checkbox", "typed", "drawn"]
+              }
+            }
+          }
+        },
+        "fundingProgram": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fundingProgramId", "fundingConsentSignedAt"],
+          "properties": {
+            "fundingProgramId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "eligibilityAnswersJson": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "fundingConsentSignedAt": {
+              "$ref": "#/$defs/isoDateTime"
+            }
+          }
+        },
+        "emergencyContact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "phone"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "relationship": {
+              "type": "string"
+            },
+            "phone": {
+              "$ref": "#/$defs/phone"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            }
+          }
+        },
+        "usiReference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["referenceId", "issuer"],
+          "properties": {
+            "referenceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "issuer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/isoDateTime"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "codeReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "label"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "isoDate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "isoDateTime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,6})?)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "phone": {
+      "type": "string",
+      "pattern": "^[0-9+()\\s-]{6,}$"
+    },
+    "usi": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9]{10}$"
+    }
+  }
+}
