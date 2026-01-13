@@ -322,7 +322,7 @@ export type EnrolmentReleasePayload = z.infer<typeof enrolmentReleasePayloadSche
 
 export type EnrolmentPayloadValidationResult =
   | { ok: true; data: EnrolmentReleasePayload }
-  | { ok: false; errors: Array<{ path: string; message: string }> };
+  | { ok: false; errors: { path: string; message: string }[] };
 
 export function validateEnrolmentReleasePayload(input: unknown): EnrolmentPayloadValidationResult {
   const parsed = enrolmentReleasePayloadSchema.safeParse(input);

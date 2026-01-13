@@ -19,7 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiFetch } from '@/src/lib/api';
-import { inferColorTheme, inferStatus, DEMO_CREDENTIALS } from '@/src/data/demoCredentials';
+import { inferColorTheme, DEMO_CREDENTIALS } from '@/src/data/demoCredentials';
 import { getLocalCredential } from '@/src/storage/credentialsStore';
 import { cardThemes, colors, fontSizes, shadows, spacing } from '@/src/theme/tokens';
 import type { Credential } from '@/src/types/credential';
@@ -140,7 +140,6 @@ export default function CredentialDetailScreen() {
 
   const themeKey = credential.colorTheme || inferColorTheme(credential) || 'cyan';
   const theme = cardThemes[themeKey] || cardThemes.cyan;
-  const _status = inferStatus(credential); // Available for future use
   const units = credential.units || [];
 
   return (

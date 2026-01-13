@@ -267,7 +267,7 @@ export default function EnrolmentScreen() {
   const [useTrainingWallet, setUseTrainingWallet] = useState(false);
   const [formState, setFormState] = useState<ManualEnrolmentForm>(DEFAULT_FORM_STATE);
   const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus>('idle');
-  const [submissionErrors, setSubmissionErrors] = useState<Array<{ path: string; message: string }>>([]);
+  const [submissionErrors, setSubmissionErrors] = useState<{ path: string; message: string }[]>([]);
 
   const updateField = useCallback(
     <K extends keyof ManualEnrolmentForm>(key: K, value: ManualEnrolmentForm[K]) => {
@@ -319,7 +319,7 @@ export default function EnrolmentScreen() {
     } catch (err) {
       const anyErr = err as { body?: unknown };
       if (anyErr?.body && typeof anyErr.body === 'object' && 'errors' in anyErr.body) {
-        const bodyErrors = (anyErr.body as { errors?: Array<{ path: string; message: string }> })
+        const bodyErrors = (anyErr.body as { errors?: { path: string; message: string }[] })
           .errors;
         if (Array.isArray(bodyErrors)) {
           setSubmissionErrors(bodyErrors);
@@ -368,7 +368,7 @@ export default function EnrolmentScreen() {
 
       if (!response.ok) {
         if (body && typeof body === 'object' && 'errors' in body) {
-          const bodyErrors = (body as { errors?: Array<{ path: string; message: string }> })
+          const bodyErrors = (body as { errors?: { path: string; message: string }[] })
             .errors;
           if (Array.isArray(bodyErrors)) {
             setSubmissionErrors(bodyErrors);

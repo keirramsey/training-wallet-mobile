@@ -82,7 +82,7 @@ export default function ShareScreen() {
   const appliedPreselectKey = useRef<string>('');
 
   const [loading, setLoading] = useState(true);
-  const [_error, setError] = useState<{ message: string; httpStatus?: number } | null>(null);
+  const [, setError] = useState<{ message: string; httpStatus?: number } | null>(null);
   const [items, setItems] = useState<Credential[]>([]);
   const [selected, setSelected] = useState<SelectedMap>({});
 

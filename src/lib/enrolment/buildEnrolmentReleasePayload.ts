@@ -96,7 +96,7 @@ export type EnrolmentContext = {
 };
 
 export type EnrolmentReleasePayloadValidationError = Error & {
-  errors: Array<{ path: string; message: string }>;
+  errors: { path: string; message: string }[];
 };
 
 export function buildEnrolmentReleasePayload(input: {

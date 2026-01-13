@@ -38,7 +38,7 @@ export default function ProfileScreen() {
   const stProfileUrl = 'https://searchtraining.com.au/profile';
 
   const cycleThemePreference = useCallback(() => {
-    const order: Array<typeof preference> = ['system', 'light', 'dark'];
+    const order: typeof preference[] = ['system', 'light', 'dark'];
     const index = order.indexOf(preference);
     const next = order[(index + 1) % order.length];
     setPreference(next);
