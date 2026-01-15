@@ -31,7 +31,7 @@ type MenuItem = {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { logout, user } = useAuth();
+  const { logout, session } = useAuth();
   const { preference, setPreference } = useThemePreference();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
@@ -219,8 +219,8 @@ export default function ProfileScreen() {
             <FontAwesome5 name="camera" size={12} color={colors.text.inverse} />
           </Pressable>
           </View>
-          <Text style={styles.userName}>{user?.name || 'Training Wallet User'}</Text>
-          <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
+          <Text style={styles.userName}>{session?.userId || 'Training Wallet User'}</Text>
+          <Text style={styles.userEmail}>{session?.orgId ? `Org: ${session.orgId}` : 'Org: Unassigned'}</Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>6</Text>

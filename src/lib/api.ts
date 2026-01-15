@@ -1,3 +1,5 @@
+import { getAuthHeader } from '@/src/auth/auth';
+
 export type ApiFetchError = Error & {
   status?: number;
   url?: string;
@@ -96,6 +98,13 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
     typeof FormData !== 'undefined' && hasBody && init.body instanceof FormData;
   if (!headers.has('Content-Type') && !isFormData) {
     headers.set('Content-Type', 'application/json');
+  }
+
+  if (!headers.has('Authorization')) {
+    const authHeader = await getAuthHeader();
+    if (authHeader?.Authorization) {
+      headers.set('Authorization', authHeader.Authorization);
+    }
   }
 
   const url = buildUrl(path);
