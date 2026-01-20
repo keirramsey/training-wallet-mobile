@@ -29,3 +29,17 @@ Example:
 EXPO_PUBLIC_ST_API_BASE_URL=https://st-api-service-production-4618.up.railway.app
 ```
 
+## Demo Mode (Development & Preview)
+
+To enable the "Continue in Demo Mode" button on the login screen, use one of the following configurations:
+
+1.  **Local Development:**
+    *   Set `NODE_ENV=development` (default for `npx expo start`)
+    *   Or set `NEXT_PUBLIC_DEMO_MODE=true` in your `.env`
+
+2.  **Vercel Preview:**
+    *   Set the Environment Variable `NEXT_PUBLIC_DEMO_MODE` to `true` in your Vercel Project Settings for the **Preview** environment.
+
+**Note:** Demo mode is strictly disabled in Production builds unless `NEXT_PUBLIC_DEMO_MODE` is explicitly set to `true`.
+
+

@@ -13,6 +13,7 @@ import { AuthProvider } from '@/src/context/AuthContext';
 import { ThemePreferenceProvider, useThemePreference } from '@/src/context/ThemePreferenceContext';
 import { API_BASE_URL } from '@/src/lib/api';
 import { colors, shadows } from '@/src/theme/tokens';
+import { DemoBanner } from '@/src/components/DemoBanner';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -69,6 +70,7 @@ function RootLayoutNav() {
   const content = (
     <AuthProvider>
       <ThemeProvider value={resolvedScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <DemoBanner />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

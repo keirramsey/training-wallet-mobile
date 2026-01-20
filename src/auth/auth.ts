@@ -9,6 +9,7 @@ const ACCESS_TOKEN_KEY = 'tw_access_token';
 const ID_TOKEN_KEY = 'tw_id_token';
 const EXPIRES_AT_KEY = 'tw_expires_at';
 const NONCE_KEY = 'tw_auth_nonce';
+const IS_DEMO_KEY = 'tw_is_demo';
 
 const DEFAULT_SCOPES = 'openid email profile';
 const NONCE_TTL_MS = 10 * 60 * 1000;
@@ -24,6 +25,7 @@ export type AuthSessionState = {
   accessToken: string;
   idToken: string;
   expiresAt: number;
+  isDemo?: boolean;
 };
 
 type NonceRecord = {
@@ -109,6 +111,11 @@ async function setSession(session: AuthSessionState) {
   await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, session.accessToken);
   await SecureStore.setItemAsync(ID_TOKEN_KEY, session.idToken);
   await SecureStore.setItemAsync(EXPIRES_AT_KEY, String(session.expiresAt));
+  if (session.isDemo) {
+    await SecureStore.setItemAsync(IS_DEMO_KEY, 'true');
+  } else {
+    await SecureStore.deleteItemAsync(IS_DEMO_KEY);
+  }
 }
 
 async function clearSession() {
@@ -117,15 +124,17 @@ async function clearSession() {
   await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
   await SecureStore.deleteItemAsync(ID_TOKEN_KEY);
   await SecureStore.deleteItemAsync(EXPIRES_AT_KEY);
+  await SecureStore.deleteItemAsync(IS_DEMO_KEY);
 }
 
 async function loadSession(): Promise<AuthSessionState | null> {
   if (sessionLoaded) return cachedSession;
 
-  const [accessToken, idToken, expiresAtRaw] = await Promise.all([
+  const [accessToken, idToken, expiresAtRaw, isDemoRaw] = await Promise.all([
     SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
     SecureStore.getItemAsync(ID_TOKEN_KEY),
     SecureStore.getItemAsync(EXPIRES_AT_KEY),
+    SecureStore.getItemAsync(IS_DEMO_KEY),
   ]);
   sessionLoaded = true;
 
@@ -150,6 +159,7 @@ async function loadSession(): Promise<AuthSessionState | null> {
     accessToken,
     idToken,
     expiresAt,
+    isDemo: isDemoRaw === 'true',
   };
   cachedSession = session;
   return session;
@@ -173,6 +183,34 @@ function mapClaims(claims: Record<string, unknown>): {
   const groupClaim = claims['cognito:groups'];
   const roles = Array.isArray(groupClaim) ? groupClaim.map((role) => String(role)) : [];
   return { userId, orgId, roles };
+}
+
+export async function signInDemo(): Promise<AuthSessionState> {
+  const isProduction = process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV === 'production';
+  const isDemoEnabled = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+  if (isProduction && !isDemoEnabled) {
+    throw new Error('Demo mode is not available in production');
+  }
+
+  const now = Date.now();
+  // Constructed to satisfy decodeJwtPayload and mapClaims
+  // payload: {"sub":"demo-user-123","org_id":"demo-org","name":"Demo User","email":"demo@example.com","cognito:groups":["demo-role"]}
+  const fakePayload = 'eyJzdWIiOiJkZW1vLXVzZXItMTIzIiwib3JnX2lkIjoiZGVtby1vcmciLCJuYW1lIjoiRGVtbyBVc2VyIiwiZW1haWwiOiJkZW1vQGV4YW1wbGUuY29tIiwiY29nbml0bzpncm91cHMiOlsiZGVtby1yb2xlIl19';
+  const idToken = `fake.${fakePayload}.fake`;
+  
+  const session: AuthSessionState = {
+    userId: 'demo-user-123',
+    orgId: 'demo-org',
+    roles: ['demo-role'],
+    accessToken: 'demo_access_token',
+    idToken,
+    expiresAt: now + 24 * 60 * 60 * 1000, // 24 hours
+    isDemo: true,
+  };
+
+  await setSession(session);
+  return session;
 }
 
 export async function signIn(): Promise<AuthSessionState> {

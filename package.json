@@ -13,6 +13,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck",
+    "auth:check": "node scripts/auth-compliance-check.mjs",
+    "test:auth": "node --test tests/unit/auth_compliance_gate.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
     "test:visual": "playwright test tests/e2e/wallet_visual.spec.ts",

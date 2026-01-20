@@ -37,7 +37,12 @@ const STBadge = () => (
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { signIn, isLoading } = useAuth();
+  const { signIn, signInDemo, isLoading } = useAuth();
+
+  const demoFlag = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  const previewHost =
+    typeof window !== 'undefined' && window.location.hostname.includes('-git-preview-');
+  const showDemo = demoFlag || previewHost || process.env.NODE_ENV !== 'production';
 
   const onSignIn = async () => {
     try {
@@ -45,6 +50,15 @@ export default function LoginScreen() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Sign-in failed';
       Alert.alert('Sign-in failed', message);
+    }
+  };
+
+  const onDemoSignIn = async () => {
+    try {
+      await signInDemo();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Demo Sign-in failed';
+      Alert.alert('Demo Sign-in failed', message);
     }
   };
 
@@ -87,6 +101,36 @@ export default function LoginScreen() {
               {isLoading ? 'Opening sign-in...' : 'Sign in with Cognito'}
             </Text>
           </Pressable>
+
+          {showDemo && (
+            <>
+              <Pressable
+                onPress={onDemoSignIn}
+                disabled={isLoading}
+                style={({ pressed }) => [
+                  styles.demoButton,
+                  pressed && styles.demoButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Continue in Demo Mode"
+              >
+                <Text style={styles.demoButtonText}>Continue in Demo Mode</Text>
+              </Pressable>
+              <Text
+                style={{
+                  textAlign: 'center',
+                  fontSize: 10,
+                  color: colors.text.muted,
+                  marginTop: 4,
+                }}
+              >
+                {`demoFlag=${String(demoFlag)} • host=${
+                  typeof window !== 'undefined' ? window.location.hostname : 'N/A'
+                } • nodeEnv=${process.env.NODE_ENV}`}
+              </Text>
+            </>
+          )}
+
           <Text style={styles.helpText}>Need help? support@trainingwallet.com.au</Text>
         </View>
       </ScrollView>
@@ -170,6 +214,23 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '700',
+  },
+  demoButton: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  demoButtonPressed: {
+    backgroundColor: colors.bg.surfaceMuted,
+  },
+  demoButtonText: {
+    color: colors.text.primary,
+    fontWeight: '600',
+    fontSize: 15,
   },
   helpText: {
     textAlign: 'center',

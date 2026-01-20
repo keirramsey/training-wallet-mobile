@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useRouter, useSegments } from 'expo-router';
 
 import type { AuthSessionState } from '@/src/auth/auth';
-import { getSession, signIn as authSignIn, signOut as authSignOut } from '@/src/auth/auth';
+import { getSession, signIn as authSignIn, signInDemo as authSignInDemo, signOut as authSignOut } from '@/src/auth/auth';
 
 type AuthState = {
   isAuthenticated: boolean;
@@ -12,6 +12,7 @@ type AuthState = {
 
 type AuthContextValue = AuthState & {
   signIn: () => Promise<void>;
+  signInDemo: () => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -108,6 +109,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
+  const signInDemo = useCallback(async () => {
+    setState((prev) => ({ ...prev, isLoading: true }));
+    try {
+      const session = await authSignInDemo();
+      setState({
+        isAuthenticated: true,
+        isLoading: false,
+        session,
+      });
+    } catch (error) {
+      setState((prev) => ({ ...prev, isLoading: false }));
+      throw error;
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
@@ -125,9 +141,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     () => ({
       ...state,
       signIn,
+      signInDemo,
       logout,
     }),
-    [state, signIn, logout]
+    [state, signIn, signInDemo, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
