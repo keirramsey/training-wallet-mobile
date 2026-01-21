@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -13,6 +14,19 @@ import Svg, { Path, Rect } from 'react-native-svg';
 
 import { useAuth } from '@/src/context/AuthContext';
 import { colors, shadows, spacing } from '@/src/theme/tokens';
+
+// Web-safe alert that avoids Radix Dialog accessibility errors
+function showError(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    // Use console + window.alert on web to avoid Radix Dialog issues
+    console.error(`[${title}]`, message);
+    if (typeof window !== 'undefined' && window.alert) {
+      window.alert(`${title}: ${message}`);
+    }
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 const WalletIcon = ({ size = 64 }: { size?: number }) => (
   <View style={[styles.iconContainer, { width: size, height: size }]}>
@@ -45,20 +59,26 @@ export default function LoginScreen() {
   const showDemo = demoFlag || previewHost || process.env.NODE_ENV !== 'production';
 
   const onSignIn = async () => {
+    console.log('[login] onSignIn pressed');
     try {
       await signIn();
+      console.log('[login] signIn completed');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Sign-in failed';
-      Alert.alert('Sign-in failed', message);
+      console.error('[login] signIn error:', error);
+      showError('Sign-in failed', message);
     }
   };
 
   const onDemoSignIn = async () => {
+    console.log('[login] onDemoSignIn pressed');
     try {
       await signInDemo();
+      console.log('[login] signInDemo completed successfully');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Demo Sign-in failed';
-      Alert.alert('Demo Sign-in failed', message);
+      console.error('[login] signInDemo error:', error);
+      showError('Demo Sign-in failed', message);
     }
   };
 

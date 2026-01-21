@@ -1,7 +1,8 @@
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+
+import * as SecureStorage from '@/src/storage/secureStorage';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -83,16 +84,16 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 
 async function storeNonce(nonce: string) {
   const payload: NonceRecord = { nonce, expiresAt: Date.now() + NONCE_TTL_MS };
-  await SecureStore.setItemAsync(NONCE_KEY, JSON.stringify(payload));
+  await SecureStorage.setItemAsync(NONCE_KEY, JSON.stringify(payload));
 }
 
 async function getStoredNonce(): Promise<NonceRecord | null> {
-  const raw = await SecureStore.getItemAsync(NONCE_KEY);
+  const raw = await SecureStorage.getItemAsync(NONCE_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as NonceRecord;
     if (typeof parsed.expiresAt !== 'number' || parsed.expiresAt < Date.now()) {
-      await SecureStore.deleteItemAsync(NONCE_KEY);
+      await SecureStorage.deleteItemAsync(NONCE_KEY);
       return null;
     }
     return parsed;
@@ -102,39 +103,39 @@ async function getStoredNonce(): Promise<NonceRecord | null> {
 }
 
 async function clearNonce() {
-  await SecureStore.deleteItemAsync(NONCE_KEY);
+  await SecureStorage.deleteItemAsync(NONCE_KEY);
 }
 
 async function setSession(session: AuthSessionState) {
   cachedSession = session;
   sessionLoaded = true;
-  await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, session.accessToken);
-  await SecureStore.setItemAsync(ID_TOKEN_KEY, session.idToken);
-  await SecureStore.setItemAsync(EXPIRES_AT_KEY, String(session.expiresAt));
+  await SecureStorage.setItemAsync(ACCESS_TOKEN_KEY, session.accessToken);
+  await SecureStorage.setItemAsync(ID_TOKEN_KEY, session.idToken);
+  await SecureStorage.setItemAsync(EXPIRES_AT_KEY, String(session.expiresAt));
   if (session.isDemo) {
-    await SecureStore.setItemAsync(IS_DEMO_KEY, 'true');
+    await SecureStorage.setItemAsync(IS_DEMO_KEY, 'true');
   } else {
-    await SecureStore.deleteItemAsync(IS_DEMO_KEY);
+    await SecureStorage.deleteItemAsync(IS_DEMO_KEY);
   }
 }
 
 async function clearSession() {
   cachedSession = null;
   sessionLoaded = true;
-  await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-  await SecureStore.deleteItemAsync(ID_TOKEN_KEY);
-  await SecureStore.deleteItemAsync(EXPIRES_AT_KEY);
-  await SecureStore.deleteItemAsync(IS_DEMO_KEY);
+  await SecureStorage.deleteItemAsync(ACCESS_TOKEN_KEY);
+  await SecureStorage.deleteItemAsync(ID_TOKEN_KEY);
+  await SecureStorage.deleteItemAsync(EXPIRES_AT_KEY);
+  await SecureStorage.deleteItemAsync(IS_DEMO_KEY);
 }
 
 async function loadSession(): Promise<AuthSessionState | null> {
   if (sessionLoaded) return cachedSession;
 
   const [accessToken, idToken, expiresAtRaw, isDemoRaw] = await Promise.all([
-    SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
-    SecureStore.getItemAsync(ID_TOKEN_KEY),
-    SecureStore.getItemAsync(EXPIRES_AT_KEY),
-    SecureStore.getItemAsync(IS_DEMO_KEY),
+    SecureStorage.getItemAsync(ACCESS_TOKEN_KEY),
+    SecureStorage.getItemAsync(ID_TOKEN_KEY),
+    SecureStorage.getItemAsync(EXPIRES_AT_KEY),
+    SecureStorage.getItemAsync(IS_DEMO_KEY),
   ]);
   sessionLoaded = true;
 
@@ -186,10 +187,20 @@ function mapClaims(claims: Record<string, unknown>): {
 }
 
 export async function signInDemo(): Promise<AuthSessionState> {
+  console.log('[auth] signInDemo() called');
+
   const isProduction = process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV === 'production';
   const isDemoEnabled = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
+  console.log('[auth] signInDemo check:', {
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    isProduction,
+    isDemoEnabled
+  });
+
   if (isProduction && !isDemoEnabled) {
+    console.error('[auth] signInDemo blocked: production without DEMO_MODE');
     throw new Error('Demo mode is not available in production');
   }
 
@@ -198,7 +209,7 @@ export async function signInDemo(): Promise<AuthSessionState> {
   // payload: {"sub":"demo-user-123","org_id":"demo-org","name":"Demo User","email":"demo@example.com","cognito:groups":["demo-role"]}
   const fakePayload = 'eyJzdWIiOiJkZW1vLXVzZXItMTIzIiwib3JnX2lkIjoiZGVtby1vcmciLCJuYW1lIjoiRGVtbyBVc2VyIiwiZW1haWwiOiJkZW1vQGV4YW1wbGUuY29tIiwiY29nbml0bzpncm91cHMiOlsiZGVtby1yb2xlIl19';
   const idToken = `fake.${fakePayload}.fake`;
-  
+
   const session: AuthSessionState = {
     userId: 'demo-user-123',
     orgId: 'demo-org',
@@ -209,7 +220,9 @@ export async function signInDemo(): Promise<AuthSessionState> {
     isDemo: true,
   };
 
+  console.log('[auth] signInDemo creating session...');
   await setSession(session);
+  console.log('[auth] signInDemo session stored successfully');
   return session;
 }
 
